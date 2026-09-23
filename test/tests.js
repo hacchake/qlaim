@@ -506,5 +506,25 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('発光つき描画が例外なし', !err, err);
 }
 
+
+// ---- 37) ランキングと名前入力 ----
+{
+  settings.mode = 'TETRA'; ranks.TETRA = [];
+  startGame(); stTimer = 2; tickMeta(0.016);
+  score = 5000; lives = 0; player.invuln = 0; death(); for (let i = 0; i < 60 && deathTimer > 0; i++) update(1/30);
+  assert('ランキング入りで名前入力へ', state === 'entry', state);
+  const ev = key => ({ key, repeat: false, preventDefault() {} });
+  onKeyDown(ev('ArrowUp'));
+  const c0 = entry.name[0];
+  onKeyDown(ev('z')); onKeyDown(ev('q')); onKeyDown(ev('z'));
+  assert('名前を決めて登録', state === 'over' && rankOf('TETRA')[0].s === 5000 && entry.rank === 0, JSON.stringify(rankOf('TETRA')));
+  assert('文字キーで直接入力', rankOf('TETRA')[0].n[1] === 'Q' && rankOf('TETRA')[0].n[0] === c0);
+  for (const sc of [100, 9000, 300, 50, 7000, 20]) addRank('ZZZ', sc, 1);
+  const r = rankOf('TETRA');
+  assert('上位5件を高い順に保持', r.length === 5 && r[0].s === 9000 && r[4].s === 100 && !qualifies(90) && qualifies(20000), r.map(e => e.s).join(','));
+  let err = null; try { render(); setState('entry'); render(); } catch (e) { err = e.stack; }
+  assert('ランキング・名前入力の描画が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
