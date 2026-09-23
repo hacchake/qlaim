@@ -466,7 +466,7 @@ const store = (() => {
 })();
 
 const settings = Object.assign(
-  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: 4, crt: true, mode: 'TOUR', music: 'AUTO' },
+  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: 4, crt: true, mode: 'TOUR', music: 'AUTO', shake: true, glow: true },
   store.get('qlaim.settings', {})
 );
 if (!DIFFS[settings.diff]) settings.diff = 'NORMAL';
@@ -2029,6 +2029,8 @@ const OPT_ITEMS = [
   { k:'lives', label:'残機',     min:1, max:5 },
   { k:'theme', label:'テーマ',   vals:THEMES.map(t => t.name) },
   { k:'crt',   label:'CRT効果',  vals:['OFF','ON'], bool:true },
+  { k:'glow',  label:'発光',     vals:['OFF','ON'], bool:true },
+  { k:'shake', label:'画面揺れ', vals:['OFF','ON'], bool:true },
   { k:'_back', label:'もどる' },
 ];
 
@@ -2307,7 +2309,7 @@ function drawBackView(t) {
 function render() {
   const t = theme();
   ctx.save();
-  if (shakeT > 0) {
+  if (shakeT > 0 && settings.shake) {
     const a = shakeT * 9;
     ctx.translate(rand(-a, a), rand(-a, a));
   }
@@ -2351,6 +2353,25 @@ function render() {
 
   renderHUD();
   renderOverlay();
+  ctx.restore();
+  if (settings.glow) drawBloom();
+}
+
+// 発光: 画面を小さく縮めて(ぼかして)から、加算合成で重ねる
+const bloom1 = document.createElement('canvas'), bloom2 = document.createElement('canvas');
+bloom1.width = W / 4; bloom1.height = H / 4; bloom2.width = W / 8; bloom2.height = H / 8;
+const b1ctx = bloom1.getContext('2d'), b2ctx = bloom2.getContext('2d');
+function drawBloom() {
+  b1ctx.imageSmoothingEnabled = b2ctx.imageSmoothingEnabled = true;
+  b1ctx.clearRect(0, 0, bloom1.width, bloom1.height);
+  b1ctx.drawImage(cv, 0, 0, bloom1.width, bloom1.height);
+  b2ctx.clearRect(0, 0, bloom2.width, bloom2.height);
+  b2ctx.drawImage(bloom1, 0, 0, bloom2.width, bloom2.height);
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.22; ctx.drawImage(bloom1, 0, 0, W, H);
+  ctx.globalAlpha = 0.30; ctx.drawImage(bloom2, 0, 0, W, H);
   ctx.restore();
 }
 
@@ -2803,14 +2824,14 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 232, dy = 52;
+    const y0 = 226, dy = 44;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
-      optRects.push({ x: 76, y: y - 30, w: W - 152, h: 44, idx: i });
+      optRects.push({ x: 76, y: y - 28, w: W - 152, h: 40, idx: i });
       const sel = i === optSel;
       if (sel) {
         ctx.fillStyle = 'rgba(90,120,220,.18)';
-        ctx.fillRect(76, y - 30, W - 152, 44);
+        ctx.fillRect(76, y - 28, W - 152, 40);
         ctx.fillStyle = t.accent;
         ctx.font = "bold 17px 'Courier New', monospace";
         ctx.textAlign = 'left';
@@ -2961,6 +2982,7 @@ function loop(now) {
   blinkT += dt;
   stTimer += dt;
 
+  pollPad();
   tickMeta(dt);
   tickTheme(dt);
   if (state === 'play') update(dt);
@@ -2979,7 +3001,7 @@ const KEYDIR = {
   w:'up', s:'down', a:'left', d:'right',
   W:'up', S:'down', A:'left', D:'right',
 };
-window.addEventListener('keydown', e => {
+function onKeyDown(e) {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
   Snd.ensure();
@@ -3037,14 +3059,38 @@ window.addEventListener('keydown', e => {
     if (state === 'play' || state === 'ready' || state === 'pause') togglePause();
     return;
   }
-});
-window.addEventListener('keyup', e => {
+}
+window.addEventListener('keydown', onKeyDown);
+function onKeyUp(e) {
   const k = e.key;
   if (KEYDIR[k]) { releaseDir(KEYDIR[k]); return; }
   if (k === 'z' || k === 'Z' || k === ' ' || k === 'j') held.fast = false;
   if (k === 'x' || k === 'X' || k === 'Shift' || k === 'k') held.slow = false;
-});
+}
+window.addEventListener('keyup', onKeyUp);
 window.addEventListener('blur', () => { if (state === 'play' || state === 'ready') doPause(); });
+
+/* ---------------- ゲームパッド ----------------
+   十字キー/左スティック=移動、A=速く引く・決定、B=OPTIONS・戻る、START=ポーズ。
+   押された/離された瞬間にキーボードと同じ処理を呼ぶ */
+const PAD_MAP = [[12, 'ArrowUp'], [13, 'ArrowDown'], [14, 'ArrowLeft'], [15, 'ArrowRight'], [0, 'z'], [1, 'x'], [9, 'p']];
+function padKeys(gp) {
+  const on = new Set(), b = i => gp.buttons[i] && gp.buttons[i].pressed;
+  for (const [i, k] of PAD_MAP) if (b(i)) on.add(k);
+  const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+  if (Math.max(Math.abs(ax), Math.abs(ay)) > 0.5) on.add(Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 'ArrowRight' : 'ArrowLeft') : (ay > 0 ? 'ArrowDown' : 'ArrowUp'));
+  return on;
+}
+let padPrev = new Set();
+function pollPad() {
+  if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+  const gp = [...navigator.getGamepads()].find(g => g && g.connected);
+  const now = gp ? padKeys(gp) : new Set();
+  const ev = key => ({ key, repeat: false, preventDefault() {} });
+  for (const k of now) if (!padPrev.has(k)) { onKeyDown(ev(k)); }
+  for (const k of padPrev) if (!now.has(k)) onKeyUp(ev(k));
+  padPrev = now;
+}
 
 /* ---------------- タッチ操作 ---------------- */
 function bindHold(id, down, up) {

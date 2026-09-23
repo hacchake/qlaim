@@ -487,5 +487,22 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   Bgm.stop();
 }
 
+
+// ---- 36) ゲームパッド・発光・画面揺れ ----
+{
+  const gp = { buttons: [{ pressed: true }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { pressed: true }, {}], axes: [0, 0.9] };
+  const ks = padKeys(gp);
+  assert('ゲームパッド: A=z, 十字左, スティック下', ks.has('z') && ks.has('ArrowLeft') && ks.has('ArrowDown'), [...ks].join(','));
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  onKeyDown({ key: 'ArrowUp', repeat: false, preventDefault() {} });
+  assert('キー処理の関数化(onKeyDown→方向)', currentDir() === 'up');
+  onKeyUp({ key: 'ArrowUp', preventDefault() {} });
+  assert('onKeyUpで離す', currentDir() === null);
+  assert('OPTIONSに発光と画面揺れ', OPT_ITEMS.some(o => o.k === 'glow') && OPT_ITEMS.some(o => o.k === 'shake'));
+  let err = null; settings.glow = true;
+  try { render(); } catch (e) { err = e.stack; }
+  assert('発光つき描画が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
