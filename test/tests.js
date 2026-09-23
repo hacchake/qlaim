@@ -22,15 +22,13 @@ assert('初期占領率0%', percent() === 0);
 let m = steps(-1, 0, 10);
 assert('壁沿いに10歩移動', m === 10, m);
 
-// ---- 2b) 描画ボタン無しで空き地へ押すとヒント ----
-held.fast = false; held.slow = false; hintT = 0; floats = [];
-pressDir('up'); update(0.1); releaseDir('up');
-assert('Z無しで空き地へ押すとヒント表示', floats.some(f => /Z \/ X/.test(f.txt)) && !player.drawing);
-
 // ---- 3) 描画→停止→導火線→ミス ----
+held.fast = false;
+m = steps(0, -1, 1);
+assert('方向キーだけで空き地へ進むと遅い線(×2)を引き始める', m === 1 && player.drawing && !player.usedFast);
 held.fast = true;
-m = steps(0, -1, 20);
-assert('上へ20歩描画', m === 20 && player.drawing && trail.length === 20, m + '/' + trail.length);
+m = steps(0, -1, 19);
+assert('Zを押すと速い線(×1)になる', m === 19 && trail.length === 20 && player.usedFast, m + '/' + trail.length);
 for (let i = 0; i < 120 && deathTimer <= 0; i++) updateFuse(1/30, false);
 assert('導火線点火', fuse.lit);
 assert('導火線でミス発生', deathTimer > 0, deathTimer.toFixed(2));
@@ -135,8 +133,9 @@ assert('SPLITボーナス加算', lastBonus >= CONFIG.SPLIT_BONUS, lastBonus);
 
 // ---- 16) TOURモードの盤面の巡回 ----
 settings.mode = 'TOUR';
-assert('TOUR: 平面→立方体→球→平面', ['PLANE','CUBE','SPHERE','PLANE'].every((k, i) => surfaceFor(i + 1) === k),
-       [1,2,3,4].map(surfaceFor).join('→'));
+assert('TOUR: 平面→立方体→球…→一巡して平面', ['PLANE','CUBE','SPHERE'].every((k, i) => surfaceFor(i + 1) === k)
+       && surfaceFor(CONFIG.TOUR.length + 1) === 'PLANE', CONFIG.TOUR.length);
+assert('TOURは全盤面を含む', Object.keys(CONFIG.SURF).every(k => CONFIG.TOUR.includes(k)));
 settings.mode = 'CUBE';
 assert('単独モードは常に同じ盤面', surfaceFor(1) === 'CUBE' && surfaceFor(5) === 'CUBE');
 
@@ -207,7 +206,7 @@ assert('球: SPARXがHOMEの縁を巡回', sparxes.every(s => isBoundary(s.c)));
   assert('球: →で右隣、←で左隣の線へ', r >= 0 && l >= 0 && pr.x > p.x && pl.x < p.x,
          pr.x.toFixed(0) + ' / ' + pl.x.toFixed(0));
   const dn = chooseMove('down');
-  assert('球: 描画ボタン無しでは空き地へ出ない', dn < 0 || grid[dn] !== OPEN, dn);
+  assert('球: 方向キーだけで空き地へ出られる', dn >= 0 && grid[dn] === OPEN, dn);
 }
 
 // ---- 20) 球: 線を引いて囲む(HOMEの下に四角く張り出す) ----
@@ -278,8 +277,8 @@ cycleMode(1);
 assert('モード切替 TOUR→PLANE', settings.mode === 'PLANE' && surf.key === 'PLANE');
 cycleMode(1); cycleMode(1);
 assert('モード切替 →SPHERE で盤面も球に', settings.mode === 'SPHERE' && surf.key === 'SPHERE');
-cycleMode(1);
-assert('モード切替は一周する', settings.mode === 'TOUR');
+for (let i = 3; i < MODES.length; i++) cycleMode(1);
+assert('モード切替は一周する', settings.mode === 'TOUR', MODES.length);
 for (let i = 0; i < 60; i++) tickMeta(1/60);
 assert('タイトル中も動作(カメラ回転で例外なし)', state === 'title');
 
@@ -293,6 +292,111 @@ try {
   for (const md of ['SPHERE', 'CUBE', 'PLANE']) { settings.mode = md; startGame(); stTimer = 2; tickMeta(0.016); render(); }
 } catch (e) { renderErr = e.stack; }
 assert('3D/2D描画が例外なし', !renderErr, renderErr);
+
+
+// ---- 26) すべての立体の形: 形・つながり・遊べること ----
+function stepK(k) { return playerStep(surf.nb[player.c * 4 + k]); }
+for (const key of Object.keys(CONFIG.SURF)) {
+  if (key === 'PLANE') continue;
+  const S = getSurface(key), nbOf = c => Array.from(S.nb.slice(c * 4, c * 4 + 4));
+  let bad = 0, asym = 0, rbad = 0;
+  for (let c = 0; c < S.N; c++) {
+    const ns = nbOf(c);
+    if (new Set(ns).size !== 4 || ns.some(b => b < 0 || b === c)) bad++;
+    for (const b of ns) if (!nbOf(b).includes(c)) asym++;
+    const r = Math.hypot(S.pos[c * 3], S.pos[c * 3 + 1], S.pos[c * 3 + 2]);
+    const nl = Math.hypot(S.nor[c * 3], S.nor[c * 3 + 1], S.nor[c * 3 + 2]);
+    if (!(r < 1.001) || Math.abs(nl - 1) > 1e-3) rbad++;
+  }
+  assert(key + ': 4近傍が正しく対称', bad === 0 && asym === 0, 'N=' + S.N + ' bad=' + bad + ' asym=' + asym);
+  assert(key + ': 表面の点が半径1以内・法線が単位長', rbad === 0, rbad);
+  settings.mode = key; startGame(); stTimer = 2; tickMeta(0.016);
+  const ok0 = state === 'play' && isBoundary(player.c) && qixes.every(openAt) && initOpen === countCells(OPEN);
+  for (let i = 0; i < 300; i++) updateQixes(1/60);
+  for (let i = 0; i < 100; i++) sparxes.forEach(stepSparx);
+  const spOk = sparxes.every(s => isBoundary(s.c));
+  // HOMEから外へ4マス → 横へ3マス → 戻って HOME にぶつかるまで
+  player.invuln = 99; held.fast = false;
+  const c0 = claimed;
+  let a = 0; for (let i = 0; i < 4; i++) if (stepK(0)) a++;
+  let b = 0; for (let i = 0; i < 3; i++) if (stepK(1)) b++;
+  for (let i = 0; i < 20 && player.drawing; i++) stepK(2);
+  assert(key + ': 開始・QIX/SPARXが正常・囲んで占領できる',
+    ok0 && spOk && qixes.every(openAt) && a === 4 && b === 3
+    && !player.drawing && claimed > c0 && claimed === initOpen - countCells(OPEN) && isBoundary(player.c),
+    'ok0=' + ok0 + ' a/b=' + a + '/' + b + ' claimed=' + (claimed - c0));
+  let err = null;
+  try { for (let i = 0; i < 3; i++) { tickMeta(1/60); render(); } } catch (e) { err = e.stack; }
+  assert(key + ': 描画が例外なし', !err, err);
+}
+
+// ---- 27) ドーナツ・クラインの壺の貼り合わせ ----
+for (const [key, loopU] of [['TORUS', 1], ['KLEIN', 2]]) {
+  const S = getSurface(key), nbOf = c => Array.from(S.nb.slice(c * 4, c * 4 + 4));
+  const walk = (start, k0, len) => {
+    let prev = start, c = S.nb[start * 4 + k0];
+    for (let s = 1; s < len; s++) { const kp = nbOf(c).indexOf(prev); prev = c; c = S.nb[c * 4 + ((kp + 2) & 3)]; }
+    return c;
+  };
+  const st = 5 * S.NU + 7;
+  assert(key + ': u方向に直進すると' + (loopU === 2 ? '2周で(裏返って)' : '1周で') + '戻る',
+    walk(st, 1, loopU * S.NU) === st && (loopU === 1 || walk(st, 1, S.NU) !== st));
+  assert(key + ': v方向に直進すると1周で戻る', walk(st, 2, S.NV) === st);
+}
+{
+  const S = getSurface('KLEIN');
+  const c = S.cellIdx(S.NU - 1, 3), n = S.nb[c * 4 + 1];
+  assert('KLEIN: 右端の先は左端の上下反転の位置', n === S.cellIdx(0, S.NV / 2 - 1 - 3), n);
+}
+
+// ---- 28) 塗りの波 ----
+settings.mode = 'SPHERE'; startGame(); stTimer = 2; tickMeta(0.016);
+player.invuln = 99;
+for (let i = 0; i < 4; i++) stepK(0); for (let i = 0; i < 3; i++) stepK(1); for (let i = 0; i < 20 && player.drawing; i++) stepK(2);
+{
+  let later = 0, set = 0;
+  for (let c = 0; c < surf.N; c++) if (claimAt[c] > -1e8) { set++; if (claimAt[c] > blinkT) later++; }
+  assert('塗りの波: 囲んだセルに到達時刻が付き、遠くは後から光る', set > 0 && later > 0 && waveUntil > blinkT, set + '/' + later);
+  assert('光の輪が出る', rings.length > 0);
+}
+
+// ---- 29) BGM: 全曲の譜面と選び方 ----
+{
+  let bad = [];
+  for (const k in BGMDATA) for (const tr of BGMDATA[k].tracks) {
+    if (tr.s && tr.s.length !== BGMDATA[k].len) bad.push(k + ' len');
+    if (tr.p && tr.p.some(x => x >= BGMDATA[k].len)) bad.push(k + ' step');
+  }
+  assert('全曲: トラック長とステップがlen内', bad.length === 0, bad.join(','));
+  assert('全盤面のAUTO曲が存在', Object.values(CONFIG.SURF).every(d => BGMDATA[d.music]));
+  assert('BGM選択肢の曲が存在', Object.values(MUSIC_SONG).every(k => BGMDATA[k]));
+  settings.music = 'IDM'; assert('BGM=IDM を選ぶとidm', bgmName() === 'idm');
+  settings.music = 'AUTO'; settings.mode = 'KLEIN'; initLevel(1);
+  assert('AUTOは盤面ごとの曲(クラインの壺=drone)', bgmName() === 'drone');
+  optSel = OPT_ITEMS.findIndex(o => o.k === 'music'); adjustOpt(1);
+  assert('OPTIONSでBGMを切替', settings.music === 'CLASSIC', settings.music);
+  settings.music = 'AUTO';
+}
+
+// ---- 30) 動くテーマ ----
+{
+  settings.theme = THEMES.findIndex(t => t.name === 'PRISM'); applyTheme();
+  const before = themePal.join();
+  for (let i = 0; i < 30; i++) tickTheme(1/30);
+  assert('PRISMテーマは色が移ろう', themePal.join() !== before && col3D.every(c => /^rgb\(/.test(c)));
+  settings.theme = 0; applyTheme();
+}
+
+// ---- 31) Clawd ----
+{
+  let err = null;
+  try { drawClawd(100, 100, 2, { moving: true, walkF: 1, drawing: true, look: -1 }); drawClawd(0, 0, 1, { dead: true }); }
+  catch (e) { err = e.stack; }
+  assert('Clawdが描ける', !err, err);
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  held.fast = false; steps(-1, 0, 1);
+  assert('歩くと向きと歩き時刻が変わる', player.look === -1 && player.moveT === blinkT);
+}
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

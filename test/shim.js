@@ -24,3 +24,4 @@ global.window = {
 global.getComputedStyle = () => ({ display: 'none' });
 global.performance = { now: () => Date.now() };
 global.requestAnimationFrame = () => {};
+global.Path2D = class { rect() {} moveTo() {} lineTo() {} closePath() {} };

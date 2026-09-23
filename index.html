@@ -46,7 +46,6 @@
   .ghost{ visibility:hidden; }
   #acts{ display:flex; gap:14px; }
   .ab{ width:76px; height:76px; border-radius:50%; font-size:14px; line-height:1.2; }
-  #b-slow{ border-color:#a8632a; color:#ffcf9e; }
   #b-fast{ border-color:#2e86ab; color:#a8e4ff; }
   .ab small{ font-size:10px; opacity:.8; }
 </style>
@@ -61,8 +60,7 @@
       <button class="pb ghost"></button><button class="pb" id="b-down">▼</button><button class="pb ghost"></button>
     </div>
     <div id="acts">
-      <button class="ab" id="b-slow">SLOW<br><small>×2点</small></button>
-      <button class="ab" id="b-fast">FAST</button>
+      <button class="ab" id="b-fast">FAST<br><small>×1点</small></button>
     </div>
   </div>
 </div>
@@ -73,8 +71,8 @@
    QLAIM v3 ─ Qix風 陣取りアーケード (単一HTML / 依存なし / WebAudio合成)
 
    ルール:
-   ・線の上を移動し、Z(速い/×1点) か X(遅い/×2点) を押しながら
-     空き地に線を引く。線が閉じると QIX のいない側が塗り潰される
+   ・線の上から方向キーで空き地へ進むと線を引ける(ゆっくり/×2点)。
+     Z を押している間だけ速く引ける(×1点)。線が閉じると QIX のいない側が塗り潰される
    ・目標占領率でエリアクリア。AREA 3 からは QIX が2体になり、
      線で「分断」すると即クリア + SPLITボーナス
    ・QIXが線に触れる / SPARXに触れる / 導火線に追いつかれる → ミス
@@ -82,10 +80,11 @@
 
    v3 の新要素: 盤面(サーフェス)
    ・平面(PLANE) … 従来どおりの長方形フィールド
-   ・立方体(CUBE) / 球(SPHERE) … 立体の「表面」で陣取り。
+   ・立体の「表面」で陣取り … 立方体・球・正多面体・切頂/準正多面体・
+     星型多面体・ドーナツ・クラインの壺。
      最初は小さな陣地(HOME)だけがあり、その縁から線を引いて広げる。
-     カメラは自機を追いかけて回り込み、方向キーは常に「画面上の向き」
-   ・TOUR … 平面 → 立方体 → 球 の順にエリアが巡る
+     カメラは自機(Clawd)を追いかけて回り込み、方向キーは常に「画面上の向き」
+   ・TOUR … 全部の盤面をエリアごとに巡る
 
    ── カスタマイズ ────────────────────────────
    ・数値バランス      → すぐ下の CONFIG(盤面ごとの値は CONFIG.SURF)
@@ -96,6 +95,11 @@
      (設定とハイスコアは localStorage が使える環境なら自動保存。
       使えない環境ではセッション内のみ保持)
 ===================================================================== */
+/* -- 立体面の共通設定(CONFIG.SURF の各盤面で上書きできる) -- */
+const SURF3D = { n:30, home:5, target:70, speed:0.55, qixSpeed:0.55, arm:5, pts:3,
+                 sparx:0.40, sparxStart:1, sparxWait:4 };
+const s3 = o => Object.assign({}, SURF3D, o);
+
 const CONFIG = {
   /* -- 画面・フィールド ---------------------------------------- */
   GRID_W: 128,          // 平面フィールド横セル数
@@ -105,8 +109,8 @@ const CONFIG = {
 
   /* -- 速度(セル/秒) ------------------------------------------ */
   PLAYER_SPEED: 38,     // 線上の移動速度
-  DRAW_FAST: 38,        // FAST描画速度(×1点)
-  DRAW_SLOW: 18,        // SLOW描画速度(×2点)
+  DRAW_FAST: 38,        // Zを押しながら描く速さ(×1点)
+  DRAW_SLOW: 18,        // 方向キーだけで描く速さ(×2点)
 
   QIX_SPEED: 14,        // QIX基本速度
   QIX_ACCEL: 1.09,      // エリア毎のQIX速度倍率
@@ -131,19 +135,34 @@ const CONFIG = {
   READY_TIME: 1.4,      // AREA表示(READY)の時間(秒)
 
   /* -- 盤面ごとの設定 ------------------------------------------
-     n: 立方体1面あたりのセル数(n×n×6面) / home: 初期陣地の半径(セル)
-     target: クリア占領率(%) / speed: 自機・SPARX・導火線の速度倍率
+     label/sub: 表示名 / shape: 形 / music: AUTO時のBGM
+     n: 立体の細かさ(6面×n×n セル) / home: 初期陣地の半径(セル)
+     target: クリア占領率(%) / speed: 自機・導火線の速度倍率
      qixSpeed: QIX速度倍率 / arm: QIXの腕の長さ(セル) / pts: 得点倍率
      sparx: SPARX速度倍率 / sparxStart: 開始時のSPARX数 / sparxWait: 開始時のSPARXが動き出すまで(秒) */
   SURF: {
-    PLANE:  { label:'平面',   target:75, speed:1.00, qixSpeed:1.00, arm:11, pts:1,
-              sparx:1.00, sparxStart:2, sparxWait:0 },
-    CUBE:   { label:'立方体', n:30, home:5, target:70, speed:0.55, qixSpeed:0.55, arm:5, pts:3,
-              sparx:0.40, sparxStart:1, sparxWait:4 },
-    SPHERE: { label:'球',     n:30, home:5, target:70, speed:0.55, qixSpeed:0.55, arm:5, pts:3,
-              sparx:0.40, sparxStart:1, sparxWait:4 },
+    PLANE:       { label:'平面', sub:'クラシック', target:75, speed:1.00, qixSpeed:1.00, arm:11, pts:1,
+                   sparx:1.00, sparxStart:2, sparxWait:0, music:'play' },
+    CUBE:        s3({ label:'立方体',       sub:'正多面体',           shape:'cube',        music:'chip' }),
+    SPHERE:      s3({ label:'球',           sub:'なめらかな曲面',     shape:'sphere',      music:'orbit' }),
+    TETRA:       s3({ label:'正四面体',     sub:'正多面体',           shape:'tetra',       music:'chip', target:68 }),
+    OCTA:        s3({ label:'正八面体',     sub:'正多面体',           shape:'octa',        music:'ambient' }),
+    DODECA:      s3({ label:'正12面体',     sub:'正多面体',           shape:'dodeca',      music:'ambient' }),
+    ICOSA:       s3({ label:'正20面体',     sub:'正多面体',           shape:'icosa',       music:'orbit' }),
+    TRUNC_TETRA: s3({ label:'切頂四面体',   sub:'切頂正多面体',       shape:'truncTetra',  music:'chip' }),
+    TRUNC_CUBE:  s3({ label:'切頂六面体',   sub:'切頂正多面体',       shape:'truncCube',   music:'idm' }),
+    TRUNC_ICOSA: s3({ label:'切頂20面体',   sub:'切頂正多面体 = サッカーボール', shape:'truncIcosa', music:'chip' }),
+    CUBOCTA:     s3({ label:'立方八面体',   sub:'準正多面体',         shape:'cubocta',     music:'ambient' }),
+    ICOSIDODECA: s3({ label:'20・12面体',   sub:'準正多面体',         shape:'icosidodeca', music:'ambient' }),
+    STELLA:      s3({ label:'星型八面体',   sub:'星型 (ケプラーの星)', shape:'stella',     music:'idm', target:65 }),
+    SSD:         s3({ label:'小星型12面体', sub:'星型正多面体',       shape:'ssd',         music:'idm', target:65 }),
+    GSD:         s3({ label:'大星型12面体', sub:'星型正多面体',       shape:'gsd',         music:'drone', target:65 }),
+    TORUS:       s3({ label:'ドーナツ',     sub:'トーラス',           shape:'torus',       music:'ambient', home:4 }),
+    KLEIN:       s3({ label:'クラインの壺', sub:'表と裏のない曲面',   shape:'klein',       music:'drone', target:65, home:4 }),
   },
-  TOUR: ['PLANE', 'CUBE', 'SPHERE'], // TOURモードでエリアが巡る順番
+  // TOURモードでエリアが巡る順番
+  TOUR: ['PLANE', 'CUBE', 'SPHERE', 'TETRA', 'DODECA', 'TRUNC_ICOSA', 'CUBOCTA', 'STELLA', 'TORUS',
+         'OCTA', 'ICOSA', 'TRUNC_TETRA', 'TRUNC_CUBE', 'ICOSIDODECA', 'SSD', 'GSD', 'KLEIN'],
 };
 
 /* ---- 難易度プリセット(OPTIONSで選択) ----
@@ -156,11 +175,13 @@ const DIFFS = {
 const DIFF_KEYS = ['EASY', 'NORMAL', 'HARD'];
 
 /* ---- 遊ぶ盤面(タイトル画面で ←→ で選択) ---- */
-const MODES = ['TOUR', 'PLANE', 'CUBE', 'SPHERE'];
-const MODE_LABEL = {
-  TOUR: 'TOUR  平面→立方体→球', PLANE: 'PLANE  平面',
-  CUBE: 'CUBE  立方体', SPHERE: 'SPHERE  球',
-};
+const MODES = ['TOUR'].concat(Object.keys(CONFIG.SURF));
+function modeLabel(m) { return m === 'TOUR' ? 'TOUR ─ ぜんぶ巡る' : CONFIG.SURF[m].label; }
+function modeSub(m) { return m === 'TOUR' ? CONFIG.TOUR.length + '種類の盤面を順番に' : CONFIG.SURF[m].sub; }
+
+/* ---- BGMの選び方(OPTIONS)。AUTO は盤面ごとの music ---- */
+const MUSIC_KEYS = ['AUTO', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM'];
+const MUSIC_SONG = { CLASSIC:'play', ORBIT:'orbit', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm' };
 
 /* ---- 配色テーマ ----
    line: 境界線 / fast: FAST占領色4種 / slow: SLOW占領色4種
@@ -187,6 +208,13 @@ const THEMES = [
     fast:['#3a3a3a','#474747','#2f2f2f','#525252'],
     slow:['#8a6a2a','#9c7a30','#7a5c22','#a8863a'],
     trailF:'#e8e8e8', trailS:'#ffcf7a', qixHue:null, qixSat0:true },
+  // anim があるテーマは占領色がゆっくり移ろう(hue: 始まりの色相, speed: 度/秒, spread: 色の幅)
+  { name:'PRISM', bgOuter:'#1a0f2e', bg:'#05030c', field:'#06040e', hud:'#0a0716',
+    line:'#ffffff', accent:'#c49bff', anim:{ hue:200, speed:22, spread:100 },
+    trailF:'#7df9ff', trailS:'#ff9ee8', qixHue:null, qixSat0:false },
+  { name:'AURORA', bgOuter:'#06201f', bg:'#020a0c', field:'#03090c', hud:'#051214',
+    line:'#e8fff6', accent:'#5cffc8', anim:{ hue:140, speed:6, spread:70 },
+    trailF:'#9dffea', trailS:'#ffd36b', qixHue:[150,300], qixSat0:false },
 ];
 
 /* ---- BGM 譜面データ ----------------------------------------------
@@ -196,9 +224,20 @@ const THEMES = [
    レイヤー l は「盛り上がり段階」。占領率が上がるほど段階が増え、
    l <= 現在段階 のトラックだけが鳴ります(0=常時)。
    len=ステップ総数(16分音符換算)。bpm はテンポ。
-   play  … 平面用。Am → F → G → E
-   orbit … 立方体・球用。Dm → B♭ → C → A(1小節ずつ)
+   音色の追加パラメータ(省略可):
+     a: 立ち上がり秒(大きいとふわっと) / r: 余韻秒 / det: うなり(セント。2音をずらして重ねる)
+     echo: やまびこ回数 / ed: やまびこの間隔(16分いくつ) / pr: 鳴る確率(0〜1。IDM風の気まぐれ)
+     oj: 1オクターブ上に跳ねる確率
+   ドラムに t:'blip'(ノイズの粒。グリッチ音)もある。at(長さ, {ステップ:'音名'}) は休符だらけの譜面の略記。
+
+   play    … クラシック(平面)   Am → F → G → E
+   orbit   … 宇宙っぽい(球など) Dm → B♭ → C → A
+   chip    … チップチューン      Em → C → D → B
+   drone   … ドローン            D の持続音に A → A# がにじむ
+   ambient … アンビエント        Fmaj7 → C/E → Dm9 → B♭maj7
+   idm     … IDM(変拍子っぽい崩し) F#m → D → A → E
 -------------------------------------------------------------------- */
+function at(len, notes) { const a = new Array(len).fill(null); for (const k in notes) a[k] = notes[k]; return a; }
 const BGMDATA = {
   title: { bpm: 92, len: 16, fixed: 1, tracks: [
     { t:'n', w:'triangle', v:0.11, g:7,   l:0, s:['A2',null,null,null,null,null,null,null,'F2',null,null,null,null,null,null,null] },
@@ -247,6 +286,58 @@ const BGMDATA = {
     { t:'hat',   v:0.06, l:3, p:[2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62] },
     { t:'snare', v:0.28, l:1, p:[8,24,40,56] },
   ]},
+  chip: { bpm: 150, len: 32, tracks: [
+    { t:'n', w:'triangle', v:0.12, g:0.8, l:0, s:[
+      'E2','E3','E2','E3','E2','E3','E2','E3',  'C2','C3','C2','C3','C2','C3','C2','C3',
+      'D2','D3','D2','D3','D2','D3','D2','D3',  'B1','B2','B1','B2','B1','B2','B1','B2'] },
+    { t:'n', w:'square',   v:0.040,g:0.45,l:0, s:[
+      'E4','G4','B4','E5','B4','G4','E4','G4',  'C4','E4','G4','C5','G4','E4','C4','E4',
+      'D4','F#4','A4','D5','A4','F#4','D4','F#4', 'B3','D#4','F#4','B4','F#4','D#4','B3','D#4'] },
+    { t:'n', w:'square',   v:0.055,g:1.6, l:1, s:[
+      'B5',null,'G5',null,'E5',null,'G5','A5',  'G5',null,'E5',null,'C5',null,'E5','G5',
+      'F#5',null,'D5',null,'A4',null,'D5','F#5', 'D#5',null,'F#5',null,'B5',null,null,null] },
+    { t:'n', w:'triangle', v:0.050,g:1.6, l:3, s:[
+      'E5',null,'B4',null,'G4',null,'B4','C5',  'E5',null,'C5',null,'G4',null,'C5','E5',
+      'D5',null,'A4',null,'F#4',null,'A4','D5', 'B4',null,'D#5',null,'F#5',null,null,null] },
+    { t:'kick',  v:0.50, l:0, p:[0,8,16,24] },
+    { t:'hat',   v:0.08, l:0, p:[2,6,10,14,18,22,26,30] },
+    { t:'snare', v:0.22, l:2, p:[4,12,20,28] },
+    { t:'hat',   v:0.04, l:3, p:[1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31] },
+  ]},
+  drone: { bpm: 60, len: 32, tracks: [
+    { t:'n', w:'sawtooth', v:0.035, g:31, a:2.5, r:3, det:9, l:0, s:at(32, { 0:'D2' }) },
+    { t:'n', w:'sine',     v:0.060, g:31, a:1.0, r:2, l:0,        s:at(32, { 0:'D1' }) },
+    { t:'n', w:'triangle', v:0.050, g:15, a:1.5, r:2, det:5, l:0, s:at(32, { 0:'A2', 16:'A#2' }) },
+    { t:'n', w:'sine',     v:0.030, g:4,  a:0.3, r:1.5, echo:3, ed:3, pr:0.7, l:1,
+      s:at(32, { 4:'D5', 12:'A5', 20:'F5', 28:'E5' }) },
+    { t:'n', w:'triangle', v:0.020, g:2,  r:1, echo:2, ed:2, pr:0.5, l:2,
+      s:at(32, { 2:'A6', 10:'D6', 18:'C6', 26:'F6' }) },
+    { t:'kick', v:0.22, l:3, p:[0,16] },
+  ]},
+  ambient: { bpm: 70, len: 64, tracks: [
+    { t:'n', w:'triangle', v:0.030, g:15, a:0.8, r:1.6, det:6, l:0, s:at(64, { 0:'F3', 16:'E3', 32:'D3', 48:'A#2' }) },
+    { t:'n', w:'triangle', v:0.030, g:15, a:0.8, r:1.6, det:6, l:0, s:at(64, { 0:'A3', 16:'G3', 32:'F3', 48:'D3' }) },
+    { t:'n', w:'triangle', v:0.026, g:15, a:0.8, r:1.6, det:6, l:0, s:at(64, { 0:'E4', 16:'B3', 32:'E4', 48:'A3' }) },
+    { t:'n', w:'sine',     v:0.070, g:14, a:0.3, r:1.0, l:0,        s:at(64, { 0:'F2', 16:'E2', 32:'D2', 48:'A#1' }) },
+    { t:'n', w:'sine',     v:0.050, g:2,  r:1.2, echo:3, ed:3, pr:0.85, l:1,
+      s:at(64, { 2:'C5', 8:'A4', 18:'G5', 26:'E5', 34:'F5', 40:'A5', 50:'D5', 58:'F5' }) },
+    { t:'n', w:'triangle', v:0.025, g:1,  r:0.6, echo:2, ed:2, pr:0.5, l:2,
+      s:at(64, { 5:'E6', 13:'C6', 21:'B5', 29:'G6', 37:'A6', 45:'F6', 53:'D6', 61:'A5' }) },
+    { t:'hat', v:0.025, l:3, pr:0.6, p:[2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62] },
+  ]},
+  idm: { bpm: 128, len: 32, tracks: [
+    { t:'kick',  v:0.50, l:0, p:[0,3,6,10,16,19,22,27] },
+    { t:'blip',  v:0.07, l:0, pr:0.5, p:[1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31] },
+    { t:'hat',   v:0.06, l:1, pr:0.75, p:[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30] },
+    { t:'snare', v:0.25, l:2, p:[8,24,30] },
+    { t:'n', w:'square', v:0.050, g:0.4, det:14, l:0, s:[
+      'F#2',null,'F#2','F#3',null,'F#2',null,'A2',  'D2',null,'D3','D2',null,'D2','E2',null,
+      'A1','A2',null,'A1',null,'A2','C#3',null,     'E2',null,'E2','E3','E2',null,'B1',null] },
+    { t:'n', w:'sine',   v:0.045, g:0.3, pr:0.75, oj:0.25, echo:1, ed:3, l:1, s:[
+      'F#5','C#6','A5','F#5','C#5','A5','F#5','C#6',  'D5','A5','F#5','D6','A5','F#5','D5','A5',
+      'A5','E6','C#6','A5','E5','C#6','A5','E6',      'E5','B5','G#5','E6','B5','G#5','E5','B5'] },
+    { t:'n', w:'triangle', v:0.028, g:7, a:0.2, r:0.8, det:8, l:3, s:at(32, { 0:'A4', 8:'F#4', 16:'E4', 24:'G#4' }) },
+  ]},
 };
 
 /* ---------------- 定数・ユーティリティ ---------------- */
@@ -271,6 +362,12 @@ function rgbStr(c, k) {
   return `rgb(${clamp(c[0] * k | 0, 0, 255)},${clamp(c[1] * k | 0, 0, 255)},${clamp(c[2] * k | 0, 0, 255)})`;
 }
 function mixRgb(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+function hslHex(h, s, l) {
+  h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
+  const f = n => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return '#' + [f(0), f(8), f(4)].map(v => v.toString(16).padStart(2, '0')).join('');
+}
 // '#rrggbb' を明度倍率で暗く(占領地のディザ用)
 function shade(hex, k) { return rgbStr(rgbOf(hex), k); }
 // 音名 → 周波数('A4'=440)
@@ -304,11 +401,12 @@ const store = (() => {
 })();
 
 const settings = Object.assign(
-  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: 0, crt: true, mode: 'TOUR' },
+  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: 4, crt: true, mode: 'TOUR', music: 'AUTO' },
   store.get('qlaim.settings', {})
 );
 if (!DIFFS[settings.diff]) settings.diff = 'NORMAL';
 if (!MODES.includes(settings.mode)) settings.mode = 'TOUR';
+if (!MUSIC_KEYS.includes(settings.music)) settings.music = 'AUTO';
 settings.theme = clamp(settings.theme | 0, 0, THEMES.length - 1);
 function saveSettings() { store.set('qlaim.settings', settings); }
 function diff() { return DIFFS[settings.diff]; }
@@ -345,9 +443,11 @@ vigC.width = W; vigC.height = H - FIELD_Y;
   g.fillRect(0, 0, W, H - FIELD_Y);
 }
 
-// 立体面の背景に出す星
-const STARS = [];
-for (let i = 0; i < 150; i++) STARS.push({ x: rand(0, W), y: rand(FIELD_Y, H), r: rand(0.6, 1.8), ph: rand(0, 7) });
+// 立体面の背景: 星と星雲は「方向」で持ち、カメラが回ると一緒に流れる
+function randDir() { const z = rand(-1, 1), a = rand(0, Math.PI * 2), r = Math.sqrt(1 - z * z); return [r * Math.cos(a), r * Math.sin(a), z]; }
+const STARS = [], NEBULA = [];
+for (let i = 0; i < 520; i++) STARS.push({ d: randDir(), r: rand(0.6, 2.0), ph: rand(0, 7) });
+for (let i = 0; i < 7; i++) NEBULA.push({ d: randDir(), r: rand(170, 330), h: rand(0, 360) });
 
 /* ---------------- サウンド (WebAudio合成 / SFX・BGM別バス) ---------------- */
 const Snd = (() => {
@@ -442,18 +542,37 @@ const Snd = (() => {
     s.start(t);
     tone(190, 120, 0.07, 'triangle', v * 0.7, 0, 'bgm', t);
   }
-  // BGMメロディ音(絶対時刻)
-  function note(freq, t, dur, wave, vol) {
+  // BGMメロディ音(絶対時刻)。a=立ち上がり秒, r=余韻秒, det=うなり(セント)
+  function note(freq, t, dur, wave, vol, a, r, det) {
     if (!ac) return;
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = wave;
-    o.frequency.setValueAtTime(freq, t);
+    a = a || 0.012; r = r || 0.03;
+    const hold = Math.max(t + a, t + dur - r), end = hold + r;
+    const g = ac.createGain();
+    const v = det ? vol * 0.6 : vol;
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.012);
-    g.gain.setValueAtTime(vol, Math.max(t + 0.012, t + dur - 0.03));
-    g.gain.linearRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(bgmG);
-    o.start(t); o.stop(t + dur + 0.03);
+    g.gain.linearRampToValueAtTime(v, t + a);
+    g.gain.setValueAtTime(v, hold);
+    g.gain.linearRampToValueAtTime(0.0001, end);
+    g.connect(bgmG);
+    for (const d of det ? [-det, det] : [0]) {
+      const o = ac.createOscillator();
+      o.type = wave;
+      o.frequency.setValueAtTime(freq, t);
+      o.detune.value = d;
+      o.connect(g);
+      o.start(t); o.stop(end + 0.05);
+    }
+  }
+  // IDM用: ノイズの粒(周波数をランダムにして機械のきしみっぽく)
+  function blipDrum(t, v) {
+    if (!ac || !hatBuf) return;
+    const s = ac.createBufferSource(); s.buffer = hatBuf;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500 + Math.random() * 7500; bp.Q.value = 8;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(v, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+    s.connect(bp); bp.connect(g); g.connect(bgmG);
+    s.start(t); s.stop(t + 0.05);
   }
 
   /* -- 描画中のハム音(軌跡が伸びるほど音程が上がる) -- */
@@ -478,7 +597,7 @@ const Snd = (() => {
   const SCALE = [0, 3, 5, 7, 10, 12, 15, 17]; // ペンタトニック風
   return {
     ensure, applyVols, toggleMute, stopDraw, startDraw, updateDraw,
-    note, kick, hat, snare,
+    note, kick, hat, snare, blipDrum,
     get ac() { return ac; },
     claim(cells, slow) {
       const n = 3 + Math.min(4, Math.floor(cells / 400));
@@ -520,12 +639,19 @@ const Bgm = (() => {
   function scheduleStep(st, t, inten, stepDur) {
     for (const tr of song.tracks) {
       if (tr.l > inten) continue;
+      if (tr.pr != null && Math.random() > tr.pr) continue;   // 気まぐれに休む
       if (tr.t === 'n') {
         const nm = tr.s[st % tr.s.length];
-        if (nm) Snd.note(hz(nm), t, Math.max(0.03, stepDur * tr.g), tr.w, tr.v);
+        if (!nm) continue;
+        const f = hz(nm) * (tr.oj && Math.random() < tr.oj ? 2 : 1);
+        const dur = Math.max(0.03, stepDur * tr.g);
+        Snd.note(f, t, dur, tr.w, tr.v, tr.a, tr.r, tr.det);
+        for (let e = 1; e <= (tr.echo || 0); e++)            // やまびこ
+          Snd.note(f, t + e * tr.ed * stepDur, dur, tr.w, tr.v * Math.pow(0.45, e), tr.a, tr.r, tr.det);
       } else if (tr.t === 'kick')  { if (tr.set.has(st)) Snd.kick(t, tr.v); }
         else if (tr.t === 'hat')   { if (tr.set.has(st)) Snd.hat(t, tr.v); }
         else if (tr.t === 'snare') { if (tr.set.has(st)) Snd.snare(t, tr.v); }
+        else if (tr.t === 'blip')  { if (tr.set.has(st)) Snd.blipDrum(t, tr.v); }
     }
   }
   function tick() {
@@ -668,9 +794,110 @@ function makePlaneSurface() {
   };
 }
 
-/* ---- 立方体・球(キューブスフィア) ----
-   立方体の6面をそれぞれ n×n に区切ったものがセル。球はそれを膨らませたもの。
-   両者はつながり方(グラフ)が同じで、形と見た目だけが違う。
+/* ---- 立体の形 ----
+   形は「中心から見た方向 u → 表面までの距離 r(u) と、そこでの面の向き(法線)」で表す。
+   凸多面体は面の平面の集まり、星型は「芯の多面体 + 各面に立てた角錐」(凸な部品の和)。 */
+const PHI = (1 + Math.sqrt(5)) / 2;
+// 各成分の符号を全部の組み合わせで(0 はそのまま)
+function signsOf(v) {
+  let out = [[]];
+  for (const x of v) {
+    const nx = [];
+    for (const o of out) { nx.push(o.concat([x])); if (x) nx.push(o.concat([-x])); }
+    out = nx;
+  }
+  return out;
+}
+const cyc3 = v => [[v[0], v[1], v[2]], [v[1], v[2], v[0]], [v[2], v[0], v[1]]];
+const vdist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+function uniqPts(V) { const out = []; for (const v of V) if (!out.some(o => vdist(o, v) < 1e-6)) out.push(v); return out; }
+function scalePts(V, R) {
+  const m = Math.max(...V.map(v => Math.hypot(v[0], v[1], v[2])));
+  return V.map(v => v.map(x => x * R / m));
+}
+const POLY = {
+  tetra:  () => [[1,1,1], [1,-1,-1], [-1,1,-1], [-1,-1,1]],
+  cube:   () => signsOf([1, 1, 1]),
+  octa:   () => uniqPts(cyc3([1, 0, 0]).flatMap(signsOf)),
+  icosa:  () => uniqPts(cyc3([0, 1, PHI]).flatMap(signsOf)),
+  dodeca: () => uniqPts(signsOf([1, 1, 1]).concat(cyc3([0, PHI, 1 / PHI]).flatMap(signsOf))),
+};
+// 辺 = いちばん近い頂点どうしの組
+function edgesOf(V) {
+  let m = Infinity;
+  for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++) m = Math.min(m, vdist(V[i], V[j]));
+  const E = [];
+  for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++)
+    if (vdist(V[i], V[j]) < m * 1.001) E.push([V[i], V[j]]);
+  return E;
+}
+// 角を切り落とす: 各辺の t と 1-t の位置を新しい頂点に(t=1/2 は辺の中点 = 準正多面体)
+function truncate(V, t) {
+  const out = [];
+  for (const [a, b] of edgesOf(V))
+    out.push(a.map((x, i) => x + (b[i] - x) * t), a.map((x, i) => x + (b[i] - x) * (1 - t)));
+  return uniqPts(out);
+}
+// 凸包の面の平面 { n:外向き法線, d:原点からの距離 }
+function hullPlanes(V) {
+  const pl = [];
+  for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++) for (let k = j + 1; k < V.length; k++) {
+    let n = vcross(vadd(V[j], V[i], -1), vadd(V[k], V[i], -1));
+    const l = Math.hypot(n[0], n[1], n[2]);
+    if (l < 1e-9) continue;
+    n = [n[0] / l, n[1] / l, n[2] / l];
+    let d = vdot(n, V[i]), pos = false, neg = false;
+    for (const v of V) { const e = vdot(n, v) - d; if (e > 1e-7) pos = true; else if (e < -1e-7) neg = true; }
+    if (pos && neg) continue;
+    if (pos) { n = [-n[0], -n[1], -n[2]]; d = -d; }
+    if (!pl.some(q => vdot(q.n, n) > 1 - 1e-6 && Math.abs(q.d - d) < 1e-6)) pl.push({ n, d });
+  }
+  return pl;
+}
+// 星型: 芯の多面体(外接半径 coreR)の各面に、先端が半径1まで届く角錐を立てる
+function stellate(core, coreR) {
+  const C = scalePts(core, coreR), base = hullPlanes(C), pieces = [base];
+  for (const q of base)
+    pieces.push(hullPlanes(C.filter(v => Math.abs(vdot(q.n, v) - q.d) < 1e-6).concat([q.n])));
+  return pieces;
+}
+const convex = V => [hullPlanes(scalePts(V, 1))];
+const SHAPES = {
+  cube:        () => convex(POLY.cube()),
+  tetra:       () => convex(POLY.tetra()),
+  octa:        () => convex(POLY.octa()),
+  dodeca:      () => convex(POLY.dodeca()),
+  icosa:       () => convex(POLY.icosa()),
+  truncTetra:  () => convex(truncate(POLY.tetra(), 1 / 3)),
+  truncCube:   () => convex(truncate(POLY.cube(), 1 / (2 + Math.SQRT2))),
+  truncIcosa:  () => convex(truncate(POLY.icosa(), 1 / 3)),
+  cubocta:     () => convex(truncate(POLY.cube(), 0.5)),
+  icosidodeca: () => convex(truncate(POLY.icosa(), 0.5)),
+  stella:      () => { const T = scalePts(POLY.tetra(), 1); return [hullPlanes(T), hullPlanes(T.map(v => v.map(x => -x)))]; },
+  ssd:         () => stellate(POLY.dodeca(), 0.5628),  // 小星型12面体: 芯は正12面体
+  gsd:         () => stellate(POLY.icosa(), 0.4195),   // 大星型12面体: 芯は正20面体
+};
+// 方向 u(単位ベクトル)に進んだとき表面までの距離。nOut に面の法線を入れる。pieces=null は球
+function radialOf(pieces, u, nOut) {
+  let best = 0, bn = null;
+  if (pieces) for (const P of pieces) {
+    let lo = 0, hi = Infinity, hn = null;
+    for (const q of P) {
+      const nu = q.n[0] * u[0] + q.n[1] * u[1] + q.n[2] * u[2];
+      if (nu > 1e-12) { const t = q.d / nu; if (t < hi) { hi = t; hn = q.n; } }
+      else if (nu < -1e-12) { const t = q.d / nu; if (t > lo) lo = t; }
+      else if (q.d < 0) { hi = -1; break; }
+    }
+    if (hn && hi >= lo && hi > best) { best = hi; bn = hn; }
+  }
+  if (!bn) { nOut[0] = u[0]; nOut[1] = u[1]; nOut[2] = u[2]; return pieces ? 0.3 : 1; }
+  nOut[0] = bn[0]; nOut[1] = bn[1]; nOut[2] = bn[2];
+  return best;
+}
+
+/* ---- 立体面(キューブスフィア割り付け) ----
+   球面を立方体の6面に見立てて n×n に区切ったものがセル。そのセルを
+   上の「形」の表面へ中心から放射状に貼る。どの形でもつながり方(グラフ)は同じ。
    各面は [法線N, 面内の軸U, 面内の軸V] (U×V=N)。 */
 const CUBE_FACES = [
   [[0,0,1],  [1,0,0],  [0,1,0]],   // 0 手前(+Z)  ← 初期陣地はこの面の中央
@@ -680,7 +907,6 @@ const CUBE_FACES = [
   [[0,1,0],  [1,0,0],  [0,0,-1]],  // 4 上
   [[0,-1,0], [1,0,0],  [0,0,1]],   // 5 下
 ];
-const CUBE_HALF = 0.62;           // 立方体の半辺(球の半径=1に対して)
 
 // 方向ベクトル → [面, u, v](u,v は面上の -1..1)
 function cubeFaceUV(x, y, z) {
@@ -690,25 +916,25 @@ function cubeFaceUV(x, y, z) {
   return y > 0 ? [4, x / ay, -z / ay] : [5, x / ay, z / ay];
 }
 
-function makeCubeSurface(key) {
+function makeRadialSurface(key) {
   const def = CONFIG.SURF[key];
-  const sph = key === 'SPHERE';
+  const gno = def.shape === 'cube';     // 立方体だけは面ごとに等間隔、ほかは等角(セルの大きさが揃う)
+  const pieces = def.shape === 'sphere' ? null : SHAPES[def.shape]();
   const n = def.n, nn = n * n, N = 6 * nn, VN = n + 1, nv = 6 * VN * VN;
   const QA = Math.PI / 4;
-  // 球は「等角」割り付け(セルの大きさが揃う)、立方体は等間隔
-  const warp   = t => sph ? Math.tan(t * QA) : t;
-  const unwarp = u => sph ? Math.atan(u) / QA : u;
+  const warp   = t => gno ? t : Math.tan(t * QA);
+  const unwarp = u => gno ? u : Math.atan(u) / QA;
   const cellIJ = (f, a, b) => f * nn + clamp(Math.floor((b + 1) * 0.5 * n), 0, n - 1) * n
                                      + clamp(Math.floor((a + 1) * 0.5 * n), 0, n - 1);
   function cellAt(x, y, z) {
     const r = cubeFaceUV(x, y, z);
     return cellIJ(r[0], unwarp(r[1]), unwarp(r[2]));
   }
-  // 面上の点(方向ベクトル d)を実際の形の表面へ
+  const nrm = [0, 0, 0];
+  // 方向 d の先の表面上の点(ついでに nrm に法線)
   function place(d) {
-    if (sph) return vnorm(d);
-    const m = Math.max(Math.abs(d[0]), Math.abs(d[1]), Math.abs(d[2]));
-    return [d[0] / m * CUBE_HALF, d[1] / m * CUBE_HALF, d[2] / m * CUBE_HALF];
+    const u = vnorm(d), r = radialOf(pieces, u, nrm);
+    return [u[0] * r, u[1] * r, u[2] * r];
   }
   const facePt = (F, u, v) => [F[0][0] + F[1][0] * u + F[2][0] * v,
                                F[0][1] + F[1][1] * u + F[2][1] * v,
@@ -722,33 +948,34 @@ function makeCubeSurface(key) {
   for (let f = 0; f < 6; f++) {
     const F = CUBE_FACES[f];
     for (let b = 0; b <= n; b++) for (let a = 0; a <= n; a++) {
-      const p = place(facePt(F, warp(a / n * 2 - 1), warp(b / n * 2 - 1)));
+      const q = place(facePt(F, warp(a / n * 2 - 1), warp(b / n * 2 - 1)));
       const v = f * VN * VN + b * VN + a;
-      vpos[v * 3] = p[0]; vpos[v * 3 + 1] = p[1]; vpos[v * 3 + 2] = p[2];
+      vpos[v * 3] = q[0]; vpos[v * 3 + 1] = q[1]; vpos[v * 3 + 2] = q[2];
     }
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
       const c = f * nn + j * n + i;
       const ta = (i + 0.5) / n * 2 - 1, tb = (j + 0.5) / n * 2 - 1;
       const d = facePt(F, warp(ta), warp(tb));
-      const dn = vnorm(d), p = place(d), no = sph ? dn : F[0];
-      for (let e = 0; e < 3; e++) { dir[c * 3 + e] = dn[e]; pos[c * 3 + e] = p[e]; nor[c * 3 + e] = no[e]; }
-      nc[c] = vdot(no, p);
+      const dn = vnorm(d), q = place(d), no = nrm.slice();
+      for (let e = 0; e < 3; e++) { dir[c * 3 + e] = dn[e]; pos[c * 3 + e] = q[e]; nor[c * 3 + e] = no[e]; }
+      nc[c] = vdot(no, q);
       par[c] = (i + j) & 1;
       const v0 = f * VN * VN + j * VN + i;
       quad[c * 4] = v0; quad[c * 4 + 1] = v0 + 1; quad[c * 4 + 2] = v0 + VN + 1; quad[c * 4 + 3] = v0 + VN;
       // つながり: 等間隔座標で1セル先の点がどのセルか(面の外に出れば隣の面のセルになる)
       for (let k = 0; k < 4; k++) {
-        const q = facePt(F, ta + OFS[k][0] * 2 / n, tb + OFS[k][1] * 2 / n);
-        const r = cubeFaceUV(q[0], q[1], q[2]);
+        const r = cubeFaceUV(...facePt(F, ta + OFS[k][0] * 2 / n, tb + OFS[k][1] * 2 / n));
         nb[c * 4 + k] = cellIJ(r[0], r[1], r[2]);
       }
     }
   }
   const cellAng = (Math.PI / 2) / n;       // 1セルぶんの角度(ラジアン)
-  const world = p => place(p);             // QIXの方向ベクトル → 表面上の点
-  const S = {
-    key, def, is3D: true, sph, n, N, nb, nb8: buildNb8(N, nb), pos, dir, nor, nc, par, quad, vpos, nv,
-    cellAt, world,
+  return {
+    key, def, is3D: true, sph: !pieces, sorted: !!pieces && pieces.length > 1, twoSided: false, translucent: false,
+    n, N, nb, nb8: buildNb8(N, nb), pos, dir, nor, nc, par, quad, vpos, nv,
+    cellAt,
+    ptCell: p => cellAt(p[0], p[1], p[2]),
+    world: p => place(p),                    // QIXの方向ベクトル → 表面上の点
     // 初期陣地(HOME): 手前の面の中央 (2h)×(2h) マス。縁だけ線の色にする
     setup() {
       const h = def.home, lo = (n >> 1) - h, hi = (n >> 1) + h - 1;
@@ -760,13 +987,11 @@ function makeCubeSurface(key) {
       return { start: lo * n + (n >> 1), home: hi * n + (n >> 1) };
     },
     screenOf(c) { return projXYZ(pos[c * 3] * 1.01, pos[c * 3 + 1] * 1.01, pos[c * 3 + 2] * 1.01); },
-    // QIXは陣地の反対側(奥の面)から出る
+    // QIXは陣地の反対側(奥)から出る
     qixSpawn(k, nq) {
       const a = nq === 1 ? 0 : (k ? 0.7 : -0.7);
       const p = vnorm([Math.sin(a), 0.15 * (k ? 1 : -1) * (nq - 1), -Math.cos(a)]);
-      let h = vnorm(vcross(p, [0, 1, 0]));
-      h = rotAround(h, p, rand(0, Math.PI * 2));
-      return { p, h };
+      return { p, h: rotAround(vnorm(vcross(p, [0, 1, 0])), p, rand(0, Math.PI * 2)) };
     },
     qixCell(q) { return cellAt(q.p[0], q.p[1], q.p[2]); },
     qixTurn(q, a) { q.h = rotAround(q.h, q.p, a); },
@@ -792,12 +1017,11 @@ function makeCubeSurface(key) {
       return { pts };
     },
     segEach(sg, fn) {
-      for (const p of sg.pts) if (fn(cellAt(p[0], p[1], p[2]))) return true;
+      for (const q of sg.pts) if (fn(cellAt(q[0], q[1], q[2]))) return true;
       return false;
     },
-    qixScreen(q) { const w = world(q.p); return projXYZ(w[0], w[1], w[2]); },
+    qixScreen(q) { const w = place(q.p); return projXYZ(w[0], w[1], w[2]); },
   };
-  return S;
 }
 // 接ベクトル h を軸 p(単位・h⊥p)まわりに角度 a 回す
 function rotAround(h, p, a) {
@@ -805,9 +1029,140 @@ function rotAround(h, p, a) {
   return vnorm([h[0] * c + x[0] * s, h[1] * c + x[1] * s, h[2] * c + x[2] * s]);
 }
 
+/* ---- 曲面(ドーナツ・クラインの壺) ----
+   (u,v) の長方形を NU×NV に区切り、端どうしを貼り合わせて閉じた曲面にする。
+   ドーナツ: 上下・左右をそのまま貼る。
+   クラインの壺: 左右を貼るとき上下が反転する(u=π の縁 (π,v) が u=0 の縁 (0,π−v) につながる)。
+   表と裏の区別がないので、両面を描き、半透明にして中も透かす。 */
+function kleinBottle(u, v) {
+  const cu = Math.cos(u), su = Math.sin(u), cv = Math.cos(v), sv = Math.sin(v);
+  const c2 = cu * cu, c3 = c2 * cu, c4 = c2 * c2, c5 = c4 * cu, c6 = c4 * c2, c7 = c6 * cu;
+  return [
+    -2 / 15 * cu * (3 * cv - 30 * su + 90 * c4 * su - 60 * c6 * su + 5 * cu * cv * su),
+    -1 / 15 * su * (3 * cv - 3 * c2 * cv - 48 * c4 * cv + 48 * c6 * cv - 60 * su + 5 * cu * cv * su
+                    - 5 * c3 * cv * su - 80 * c5 * cv * su + 80 * c7 * cv * su),
+    2 / 15 * (3 + 5 * cu * su) * sv,
+  ];
+}
+const PARAM_SHAPES = {
+  torus: { NU: 108, NV: 40, flip: false, uMax: Math.PI * 2, f(u, v) {
+    const r = 1 + 0.45 * Math.cos(v), y = 0.45 * Math.sin(v), z = r * Math.sin(u), a = 0.6; // 少し傾ける
+    return [r * Math.cos(u), y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
+  } },
+  // camSquash: カメラが自機を追う向きの横成分を縮める(クラインの壺は横から見ると形が分かりやすい)
+  klein: { NU: 120, NV: 44, flip: true, uMax: Math.PI, f: kleinBottle, camSquash: 0.35 },
+};
+
+function makeParamSurface(key) {
+  const def = CONFIG.SURF[key], PS = PARAM_SHAPES[def.shape];
+  const NU = PS.NU, NV = PS.NV, N = NU * NV, flip = PS.flip, nv = (NU + 1) * (NV + 1);
+  const raw0 = (x, y) => PS.f(x / NU * PS.uMax, y / NV * Math.PI * 2);
+  // 中心を原点に、いちばん遠い点が半径1になるようにそろえる
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  for (let y = 0; y <= NV; y += 0.5) for (let x = 0; x <= NU; x += 0.5) {
+    const q = raw0(x, y);
+    for (let e = 0; e < 3; e++) { mn[e] = Math.min(mn[e], q[e]); mx[e] = Math.max(mx[e], q[e]); }
+  }
+  const C = [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
+  let RR = 0;
+  for (let y = 0; y <= NV; y += 0.5) for (let x = 0; x <= NU; x += 0.5) RR = Math.max(RR, vdist(raw0(x, y), C));
+  const raw = (x, y) => { const q = raw0(x, y); return [(q[0] - C[0]) / RR, (q[1] - C[1]) / RR, (q[2] - C[2]) / RR]; };
+  // 端をまたいだ座標・セル番号の貼り合わせ
+  function wrapXY(x, y) {
+    if (x >= NU || x < 0) { const k = Math.floor(x / NU); x -= k * NU; if (flip && (k & 1)) y = NV / 2 - y; }
+    return [x, ((y % NV) + NV) % NV];
+  }
+  function cellIdx(i, j) {
+    if (i >= NU || i < 0) { const k = Math.floor(i / NU); i -= k * NU; if (flip && (k & 1)) j = NV / 2 - 1 - j; }
+    return (((j % NV) + NV) % NV) * NU + i;
+  }
+  const cellAtP = (x, y) => {
+    const w = wrapXY(x, y);
+    return Math.min(NV - 1, Math.floor(w[1])) * NU + Math.min(NU - 1, Math.floor(w[0]));
+  };
+
+  const dir = new Float32Array(N * 3), pos = new Float32Array(N * 3), nor = new Float32Array(N * 3);
+  const nc = new Float32Array(N), par = new Uint8Array(N), area = new Float32Array(N);
+  const nb = new Int32Array(N * 4), quad = new Int32Array(N * 4), vpos = new Float32Array(nv * 3);
+  for (let b = 0; b <= NV; b++) for (let a = 0; a <= NU; a++) {
+    const q = raw(a, b), v = b * (NU + 1) + a;
+    vpos[v * 3] = q[0]; vpos[v * 3 + 1] = q[1]; vpos[v * 3 + 2] = q[2];
+  }
+  for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+    const c = j * NU + i, q = raw(i + 0.5, j + 0.5);
+    const cr = vcross(vadd(raw(i + 1, j + 0.5), raw(i, j + 0.5), -1), vadd(raw(i + 0.5, j + 1), raw(i + 0.5, j), -1));
+    area[c] = Math.hypot(cr[0], cr[1], cr[2]);
+    const sq = PS.camSquash || 1, cq = [q[0] * sq, q[1] * sq, q[2]];
+    const dn = Math.hypot(cq[0], cq[1], cq[2]) > 1e-6 ? vnorm(cq) : [0, 0, 1];
+    const no = area[c] > 1e-12 ? vnorm(cr) : dn;
+    for (let e = 0; e < 3; e++) { dir[c * 3 + e] = dn[e]; pos[c * 3 + e] = q[e]; nor[c * 3 + e] = no[e]; }
+    nc[c] = vdot(no, q);
+    par[c] = (i + j) & 1;
+    const v0 = j * (NU + 1) + i;
+    quad[c * 4] = v0; quad[c * 4 + 1] = v0 + 1; quad[c * 4 + 2] = v0 + NU + 2; quad[c * 4 + 3] = v0 + NU + 1;
+    nb[c * 4] = cellIdx(i, j - 1); nb[c * 4 + 1] = cellIdx(i + 1, j);
+    nb[c * 4 + 2] = cellIdx(i, j + 1); nb[c * 4 + 3] = cellIdx(i - 1, j);
+  }
+  // HOME: いちばん大きいセルのあたり(クラインの壺は貼り合わせの縁をまたがない位置)
+  const h = def.home;
+  let hc = 0;
+  for (let c = 1; c < N; c++) if (area[c] > area[hc]) hc = c;
+  let hi0 = hc % NU;
+  const hj0 = (hc / NU) | 0;
+  if (flip) hi0 = clamp(hi0, h + 1, NU - h - 2);
+  return {
+    key, def, is3D: true, sph: false, sorted: true, twoSided: true, translucent: true,
+    NU, NV, N, nb, nb8: buildNb8(N, nb), pos, dir, nor, nc, par, quad, vpos, nv,
+    cellAtP, cellIdx,
+    ptCell: q => cellAtP(q[0], q[1]),
+    world: q => raw(q[0], q[1]),
+    setup() {
+      for (let dj = -h; dj < h; dj++) for (let di = -h; di < h; di++) {
+        const c = cellIdx(hi0 + di, hj0 + dj);
+        grid[c] = WALL;
+        colA[c] = (di === -h || di === h - 1 || dj === -h || dj === h - 1) ? 0 : HOME_COL;
+      }
+      return { start: cellIdx(hi0, hj0 - h), home: cellIdx(hi0, hj0 + h - 1) };
+    },
+    screenOf(c) { return projXYZ(pos[c * 3], pos[c * 3 + 1], pos[c * 3 + 2]); },
+    qixSpawn(k, nq) {
+      const w = wrapXY(hi0 + NU / 2 + (nq > 1 ? (k ? 6 : -6) : 0), hj0 + NV / 2);
+      return { x: w[0], y: w[1], head: rand(0, Math.PI * 2) };
+    },
+    qixCell: q => cellAtP(q.x, q.y),
+    qixTurn(q, a) { q.head += a; },
+    qixMove(q, dist) {
+      while (dist > 0) {
+        const step = Math.min(0.4, dist);
+        dist -= step;
+        const nx = q.x + Math.cos(q.head) * step, ny = q.y + Math.sin(q.head) * step;
+        const crossed = flip && (nx >= NU || nx < 0);
+        const w = wrapXY(nx, ny);
+        if (grid[cellAtP(w[0], w[1])] !== OPEN) { q.head += Math.PI + rand(-0.9, 0.9); continue; }
+        q.x = w[0]; q.y = w[1];
+        if (crossed) q.head = -q.head;   // 裏返って出てくる
+      }
+    },
+    qixArm(q, a, L) {
+      const pts = [];
+      for (let m = 0; m <= 12; m++) { const t = (m / 6 - 1) * L; pts.push(wrapXY(q.x + Math.cos(a) * t, q.y + Math.sin(a) * t)); }
+      return { pts };
+    },
+    segEach(sg, fn) {
+      for (const q of sg.pts) if (fn(cellAtP(q[0], q[1]))) return true;
+      return false;
+    },
+    qixScreen(q) { const w = raw(q.x, q.y); return projXYZ(w[0], w[1], w[2]); },
+  };
+}
+
 const SURF_CACHE = {};
 function getSurface(key) {
-  if (!SURF_CACHE[key]) SURF_CACHE[key] = key === 'PLANE' ? makePlaneSurface() : makeCubeSurface(key);
+  if (!SURF_CACHE[key]) {
+    const sh = CONFIG.SURF[key].shape;
+    SURF_CACHE[key] = key === 'PLANE' ? makePlaneSurface()
+                    : PARAM_SHAPES[sh] ? makeParamSurface(key) : makeRadialSurface(key);
+  }
   return SURF_CACHE[key];
 }
 function surfaceFor(lv) {
@@ -884,10 +1239,13 @@ let shakeT = 0;                 // 画面揺れの残り時間
 let pausedFrom = 'play';        // ポーズ前の状態(ready/play)
 let optSel = 0;                 // OPTIONS選択行
 let homeCell = -1;              // SPARXの出現セル
-let hintT = 0;                  // 「Zを押しながら」ヒントの再表示までの時間
+// 塗りの波: 囲んだ瞬間、閉じた場所から波紋のように色が広がる
+let claimAt = new Float32Array(0), waveFrom = 0, waveUntil = 0;
+let rings = [];                 // 囲んだ瞬間の光の輪
 
 // c=今いるセル / prev=直前のセル / lastDir=直前に進んだキー方向(直進判定用)
-const player = { c:0, prev:-1, lastDir:null, acc:0, drawing:false, usedFast:false, invuln:0 };
+// look: 顔の向き(-1=左, 1=右) / moveT: 最後に動いた時刻(歩きアニメ用)
+const player = { c:0, prev:-1, lastDir:null, acc:0, drawing:false, usedFast:false, invuln:0, look:1, moveT:-9 };
 let trail = [], trailStart = -1;  // 軌跡(セル番号の列) / 描画を始めたセル
 const fuse = { wait:0, pos:0, lit:false, sndT:0 };
 let qixes = [];
@@ -903,30 +1261,52 @@ function target()    { return surf.def.target; }
 
 /* ---------------- テーマ適用 ---------------- */
 const LV = 6;       // 立体面の陰影段階数
-const NCOL = 23;    // 立体面の色の種類(下の bases の数)
+const NCOL = 24;    // 立体面の色の種類(下の bases の数)
+const FLASH_CI = 23; // 塗りの波の光
+let animHue = 0, animAcc = 0, animRedraw = 0; // 動くテーマ用の経過時間
+function themePalette(t) {
+  if (!t.anim) return t.fast.concat(t.slow);
+  const h = t.anim.hue + animHue * t.anim.speed, sp = t.anim.spread;
+  return [0, 1, 2, 3].map(i => hslHex(h + i * sp / 3, 72, 40))
+    .concat([0, 1, 2, 3].map(i => hslHex(h + 160 + i * sp / 3, 80, 47)));
+}
 function applyTheme() {
-  const t = theme();
-  themePal = t.fast.concat(t.slow);
-  themePalD = themePal.map(c => shade(c, 0.80)); // ディザ用の暗色
-  // 立体面用: [色の種類 × 陰影段階] の色文字列表
-  const fld = rgbOf(t.field), acc = rgbOf(t.accent);
-  const bases = [
-    mixRgb(fld, acc, 0.24), mixRgb(fld, acc, 0.18),   // 0,1 空き地(市松)
-    mixRgb([0,0,0], acc, 0.30),                       // 2 クリア時の封鎖色
-    rgbOf(t.line), rgbOf(t.trailF), rgbOf(t.trailS),  // 3 線 / 4,5 軌跡
-    mixRgb([0,0,0], acc, 0.42),                       // 6 HOME
-  ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.8)));
-  col3D = [];
-  bases.forEach((b, ci) => {
-    const bright = ci >= 3 && ci <= 5;
-    for (let l = 0; l < LV; l++)
-      col3D.push(rgbStr(b, bright ? 0.62 + 0.38 * l / (LV - 1) : 0.36 + 0.78 * l / (LV - 1)));
-  });
+  buildColors();
   try {
+    const t = theme();
     document.body.style.background =
       `radial-gradient(ellipse at 50% 30%, ${t.bgOuter} 0%, ${t.bg} 70%)`;
   } catch (e) {}
   if (grid) redrawField();
+}
+// 動くテーマ: 少しずつ色を進める(平面は焼き直しが重いので間引く)
+function tickTheme(dt) {
+  if (!theme().anim) return;
+  animHue += dt; animAcc += dt; animRedraw += dt;
+  if (animAcc < 0.12) return;
+  animAcc = 0;
+  buildColors();
+  if (!surf.is3D && animRedraw > 0.6) { animRedraw = 0; redrawField(); }
+}
+function buildColors() {
+  const t = theme();
+  themePal = themePalette(t);
+  themePalD = themePal.map(c => shade(c, 0.80)); // ディザ用の暗色
+  // 立体面用: [色の種類 × 陰影段階] の色文字列表
+  const fld = rgbOf(t.field), acc = rgbOf(t.accent);
+  const bases = [
+    mixRgb(fld, acc, 0.30), mixRgb(fld, acc, 0.23),   // 0,1 空き地(市松)
+    mixRgb([0,0,0], acc, 0.30),                       // 2 クリア時の封鎖色
+    rgbOf(t.line), rgbOf(t.trailF), rgbOf(t.trailS),  // 3 線 / 4,5 軌跡
+    mixRgb([0,0,0], acc, 0.42),                       // 6 HOME
+  ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.8)),
+           [mixRgb([255,255,255], acc, 0.25)]);            // 23 塗りの波が通った瞬間の光
+  col3D = [];
+  bases.forEach((b, ci) => {
+    const bright = ci >= 3 && ci <= 5;
+    for (let l = 0; l < LV; l++)
+      col3D.push(rgbStr(b, bright ? 0.66 + 0.38 * l / (LV - 1) : 0.46 + 0.80 * l / (LV - 1)));
+  });
 }
 function applyCrt() {
   try { document.body.classList.toggle('crt', !!settings.crt); } catch (e) {}
@@ -955,6 +1335,8 @@ function initLevel(lv) {
   surf = getSurface(surfaceFor(lv));
   grid = new Uint8Array(surf.N);
   colA = new Uint8Array(surf.N);
+  claimAt = new Float32Array(surf.N).fill(-1e9);
+  waveUntil = 0; rings = [];
   const s = surf.setup();
   homeCell = s.home;
   initOpen = 0;
@@ -1047,12 +1429,21 @@ function openNear(c) {
   return -1;
 }
 
+// 占領したセルに「波が届く時刻」を付ける(閉じた場所から遠いほど遅い)
+function markClaim(i) {
+  const P = surf.pos, a = waveFrom * 3, b = i * 3;
+  const d = Math.hypot(P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]);
+  const t = blinkT + d * (surf.is3D ? 0.45 : 0.006);
+  claimAt[i] = t;
+  if (t + 0.35 > waveUntil) waveUntil = t + 0.35;
+}
+
 // QIX(先頭)のいる連結領域を残し、それ以外の空き地を占領する
 function claimFill(palNo) {
   const visited = visitedFrom(openNear(surf.qixCell(qixes[0])));
   let gained = 0;
   for (let i = 0; i < surf.N; i++) {
-    if (grid[i] === OPEN && !visited[i]) { grid[i] = WALL; colA[i] = palNo; gained++; }
+    if (grid[i] === OPEN && !visited[i]) { grid[i] = WALL; colA[i] = palNo; markClaim(i); gained++; }
   }
   return gained;
 }
@@ -1078,7 +1469,7 @@ function canEnter(n) {
   if (n < 0) return false;
   const v = grid[n];
   if (player.drawing) return v !== TRAIL;
-  return (v === WALL && isBoundary(n)) || (v === OPEN && (held.fast || held.slow));
+  return (v === WALL && isBoundary(n)) || v === OPEN;
 }
 
 // 押された方向 d(画面上の上下左右)に進む先のセルを選ぶ。なければ -1
@@ -1116,6 +1507,8 @@ function chooseMove(d) {
 function playerMove(d) {
   if (!playerStep(chooseMove(d))) return false;
   player.lastDir = d;
+  player.moveT = blinkT;
+  if (d === 'left') player.look = -1; else if (d === 'right') player.look = 1;
   return true;
 }
 
@@ -1125,14 +1518,14 @@ function playerStep(n) {
 
   if (!player.drawing) {
     if (v === WALL && isBoundary(n)) { player.prev = player.c; player.c = n; return true; }
-    if (v === OPEN && (held.fast || held.slow)) {
+    if (v === OPEN) {
       // 描画開始
       player.drawing = true;
       player.usedFast = false;
       trailStart = player.c;
       trail = [];
       fuseReset();
-      Snd.startDraw(!held.fast && held.slow);
+      Snd.startDraw(!held.fast);
       enterTrail(n);
       return true;
     }
@@ -1149,7 +1542,7 @@ function enterTrail(n) {
   trail.push(n);
   player.prev = player.c; player.c = n;
   if (held.fast) player.usedFast = true;
-  Snd.updateDraw(trail.length, !held.fast && held.slow);
+  Snd.updateDraw(trail.length, !player.usedFast);
 }
 
 function closeTrail() {
@@ -1159,7 +1552,8 @@ function closeTrail() {
   const palNo = (slow ? 4 : 0) + 1 + ((Math.random() * 4) | 0); // 1..4=FAST色, 5..8=SLOW色
 
   // 軌跡を壁化(線のセルも空き地から奪った領域として計上する)
-  for (const c of trail) { grid[c] = WALL; colA[c] = 0; }
+  waveFrom = player.c;
+  for (const c of trail) { grid[c] = WALL; colA[c] = 0; claimAt[c] = blinkT; }
 
   // ---- QIX分断チェック(2体時): 別領域に分かれたら即クリア ----
   if (qixes.length > 1) {
@@ -1168,7 +1562,7 @@ function closeTrail() {
     if (crushed.length) {
       let gained = trail.length;
       for (let i = 0; i < surf.N; i++) {
-        if (grid[i] === OPEN && !seen[i]) { grid[i] = WALL; colA[i] = palNo; gained++; }
+        if (grid[i] === OPEN && !seen[i]) { grid[i] = WALL; colA[i] = palNo; markClaim(i); gained++; }
       }
       claimed += gained;
       score += gained * mul;
@@ -1216,6 +1610,7 @@ function closeTrail() {
       spawnParticles(p.x, p.y, 2, slow ? theme().trailS : theme().trailF);
     }
     Snd.claim(gained * (surf.is3D ? 4 : 1), slow);
+    rings.push({ x: sp.x, y: sp.y, t: 0, col: slow ? theme().trailS : theme().trailF });
   }
 
   trail = [];
@@ -1234,18 +1629,6 @@ function checkExtend() {
     floats.push({ x: W / 2, y: H / 2, txt: 'EXTEND!', t: 1.6, col: '#8dff9e', big: true });
     Snd.extend();
   }
-}
-
-// 線の上で空き地へ進もうとして止まったら、線の引き方をそっと教える
-function drawHint() {
-  if (player.drawing || held.fast || held.slow || hintT > 0) return;
-  const nb = surf.nb, c = player.c;
-  let open = false;
-  for (let k = 0; k < 4; k++) if (nb[c * 4 + k] >= 0 && grid[nb[c * 4 + k]] === OPEN) open = true;
-  if (!open) return;
-  hintT = 3;
-  const p = surf.screenOf(c);
-  floats.push({ x: p.x, y: p.y - 18, txt: 'Z / X を押しながらで線を引く', t: 1.8, col: '#ffd76b' });
 }
 
 /* ---------------- 導火線 ---------------- */
@@ -1384,7 +1767,7 @@ function applyDeath() {
 }
 
 /* ---------------- 進行 ---------------- */
-function bgmName() { return surf.is3D ? 'orbit' : 'play'; }
+function bgmName() { return settings.music === 'AUTO' ? surf.def.music : MUSIC_SONG[settings.music]; }
 
 function startGame() {
   score = 0;
@@ -1437,7 +1820,7 @@ function cycleMode(dir) {
 }
 
 function openOptions() { optSel = 0; setState('options'); Snd.select(); }
-function closeOptions() { saveSettings(); setState('title'); Snd.select(); }
+function closeOptions() { saveSettings(); setState('title'); Snd.select(); Bgm.play('title'); }
 
 function onAction() {
   if (state === 'title') startGame();
@@ -1466,7 +1849,8 @@ function togglePause() {
 const OPT_ITEMS = [
   { k:'bgm',   label:'BGM音量',  min:0, max:10 },
   { k:'sfx',   label:'効果音量', min:0, max:10 },
-  { k:'diff',  label:'難易度',   vals:DIFF_KEYS },
+  { k:'music', label:'BGM',      vals:MUSIC_KEYS, str:true },
+  { k:'diff',  label:'難易度',   vals:DIFF_KEYS, str:true },
   { k:'lives', label:'残機',     min:1, max:5 },
   { k:'theme', label:'テーマ',   vals:THEMES.map(t => t.name) },
   { k:'crt',   label:'CRT効果',  vals:['OFF','ON'], bool:true },
@@ -1480,11 +1864,11 @@ function adjustOpt(dir) {
     settings[it.k] = !settings[it.k];
     if (it.k === 'crt') applyCrt();
   } else if (it.vals) {
-    let i = it.k === 'diff' ? it.vals.indexOf(settings.diff) : settings[it.k] | 0;
+    let i = it.str ? it.vals.indexOf(settings[it.k]) : settings[it.k] | 0;
     i = (i + dir + it.vals.length) % it.vals.length;
-    if (it.k === 'diff') settings.diff = it.vals[i];
-    else settings[it.k] = i;
+    settings[it.k] = it.str ? it.vals[i] : i;
     if (it.k === 'theme') applyTheme();
+    if (it.k === 'music') Bgm.play(settings.music === 'AUTO' ? 'title' : MUSIC_SONG[settings.music]); // 試聴
   } else {
     settings[it.k] = clamp((settings[it.k] | 0) + dir, it.min, it.max);
   }
@@ -1501,6 +1885,8 @@ function spawnParticles(px, py, n, col) {
   }
 }
 function updateParticles(dt) {
+  for (const r of rings) r.t += dt;
+  rings = rings.filter(r => r.t < 1.0);
   for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 50 * dt; p.t -= dt; }
   particles = particles.filter(p => p.t > 0);
 }
@@ -1518,12 +1904,11 @@ function update(dt) {
     return;
   }
   if (player.invuln > 0) player.invuln -= dt;
-  if (hintT > 0) hintT -= dt;
 
   // プレイヤー移動(描画中は描画ボタンを押している間だけ進める)
   const d = currentDir();
   const spd = (player.drawing
-    ? (held.fast ? CONFIG.DRAW_FAST : held.slow ? CONFIG.DRAW_SLOW : 0)
+    ? (held.fast ? CONFIG.DRAW_FAST : CONFIG.DRAW_SLOW)
     : CONFIG.PLAYER_SPEED) * surf.def.speed;
   let stepped = false;
   if (d && spd > 0) {
@@ -1531,7 +1916,7 @@ function update(dt) {
     while (player.acc >= 1) {
       player.acc -= 1;
       if (playerMove(d)) stepped = true;
-      else { player.acc = 0; drawHint(); break; }
+      else { player.acc = 0; break; }
       if (state !== 'play' || deathTimer > 0) break; // クリア/ミス発生時は中断
     }
   } else {
@@ -1594,17 +1979,51 @@ function drawFuse(p) {
   ctx.fillStyle = '#ffdd55';
   ctx.fillRect(p.x + rand(-5, 5), p.y + rand(-5, 5), 2, 2);
 }
+/* ---- 自機 Clawd(ドット絵) ----
+   13×9 ドット。体・目・腕・4本脚。歩くと脚が交互に上がって体が弾み、
+   線を引いている間は腕を振る。ときどきまばたき。o の中身:
+   moving/walkF: 歩きアニメ, drawing: 腕振り, look: 目線(-1/0/1), blink, dead */
+const CLAWD_COL = '#d97757', CLAWD_EYE = '#1d1411';
+function drawClawd(cx, cy, s, o) {
+  o = o || {};
+  const x0 = cx - 6.5 * s, y0 = cy - 4.5 * s - (o.moving && o.walkF ? s : 0);
+  const px = (c, r, w, h) => ctx.fillRect(x0 + c * s, y0 + r * s, w * s, h * s);
+  ctx.fillStyle = o.col || CLAWD_COL;
+  px(2, 0, 9, 7);                                        // 体
+  const wave = o.drawing ? (Math.floor(blinkT * 8) & 1) : 0;
+  px(0, o.drawing ? 2 - wave : 3, 2, 2);                 // 左腕
+  px(11, o.drawing ? 1 + wave : 3, 2, 2);                // 右腕
+  [3, 5, 7, 9].forEach((c, i) => {                        // 脚
+    const up = o.moving && ((i & 1) === (o.walkF | 0));
+    px(c, 7, 1, up ? 1 : 2);
+  });
+  ctx.fillStyle = CLAWD_EYE;
+  const ex = o.look || 0;
+  if (o.dead) { px(3 + ex, 2, 2, 1); px(8 + ex, 2, 2, 1); }
+  else if (o.blink) { px(4 + ex, 2, 1, 1); px(8 + ex, 2, 1, 1); }
+  else { px(4 + ex, 1, 1, 2); px(8 + ex, 1, 1, 2); }
+}
 function drawPlayer(t) {
-  const blinkOff = player.invuln > 0 && (Math.floor(blinkT * 10) % 2 === 0);
-  if (deathTimer > 0 || blinkOff) return;
-  const p = surf.screenOf(player.c), sz = surf.is3D ? 7 : 6;
-  ctx.shadowColor = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : t.accent;
-  ctx.shadowBlur = 10;
-  ctx.fillStyle = '#ffffff';
-  drawDiamond(p.x, p.y, sz);
+  const p = surf.screenOf(player.c), s = surf.is3D ? 2 : 1.6;
+  if (deathTimer > 0) { // くるくる回って小さくなる
+    ctx.save();
+    ctx.globalAlpha = clamp(deathTimer / 1.2, 0, 1);
+    ctx.translate(p.x, p.y);
+    ctx.rotate((1.2 - deathTimer) * 9);
+    drawClawd(0, 0, s * (0.5 + deathTimer / 2), { dead: true });
+    ctx.restore();
+    return;
+  }
+  if (player.invuln > 0 && (Math.floor(blinkT * 10) % 2 === 0)) return;
+  const moving = blinkT - player.moveT < 0.18;
+  const glow = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : t.accent;
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = player.drawing ? 16 : 9;
+  drawClawd(p.x, p.y - s * 2, s, {
+    moving, walkF: Math.floor(blinkT * 12) & 1, drawing: player.drawing,
+    look: player.look, blink: (blinkT % 3.3) < 0.12,
+  });
   ctx.shadowBlur = 0;
-  ctx.fillStyle = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : '#ff3b6b';
-  drawDiamond(p.x, p.y, sz / 2);
 }
 
 function render() {
@@ -1620,13 +2039,21 @@ function render() {
   if (surf.is3D) render3D(t);
   else render2D(t);
 
-  // パーティクル
+  // パーティクルと光の輪(加算合成で光らせる)
+  ctx.globalCompositeOperation = 'lighter';
   for (const p of particles) {
     ctx.globalAlpha = Math.min(1, p.t * 2);
     ctx.fillStyle = p.col;
     ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
   }
+  for (const r of rings) {
+    ctx.globalAlpha = 1 - r.t;
+    ctx.strokeStyle = r.col;
+    ctx.lineWidth = 3 + 6 * (1 - r.t);
+    ctx.beginPath(); ctx.arc(r.x, r.y, 12 + r.t * 460, 0, Math.PI * 2); ctx.stroke();
+  }
   ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
 
   // ビネット(CRT効果ON時)
   if (settings.crt) ctx.drawImage(vigC, 0, FIELD_Y);
@@ -1650,6 +2077,19 @@ function render() {
 function render2D(t) {
   ctx.drawImage(fieldC, 0, FIELD_Y);
 
+  // 塗りの波: まだ届いていないセルは空き地のまま、届いた瞬間に白く光る
+  if (waveUntil > blinkT) {
+    const now = blinkT, hide = new Path2D(), flash = new Path2D();
+    for (let i = 0; i < surf.N; i++) {
+      const ca = claimAt[i];
+      if (ca < now - 0.35) continue;
+      const x = (i % GW) * CS, y = FIELD_Y + ((i / GW) | 0) * CS;
+      if (ca > now) hide.rect(x, y, CS, CS); else flash.rect(x, y, CS, CS);
+    }
+    ctx.fillStyle = t.field; ctx.fill(hide);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill(flash);
+  }
+
   // 軌跡
   if (trail.length) {
     const pulse = 0.75 + 0.25 * Math.sin(blinkT * 12);
@@ -1658,6 +2098,8 @@ function render2D(t) {
     for (const c of trail) ctx.fillRect((c % GW) * CS, FIELD_Y + ((c / GW) | 0) * CS, CS, CS);
     ctx.globalAlpha = 1;
   }
+
+  drawTrailGlow(t);
 
   // 導火線
   if (fuse.lit && player.drawing && trail.length)
@@ -1673,6 +2115,7 @@ function render2D(t) {
   ctx.beginPath();
   ctx.rect(0, FIELD_Y, W, H - FIELD_Y);
   ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
   for (const q of qixes) {
     for (let i = 0; i < q.segs.length; i++) {
       const s = q.segs[i];
@@ -1691,24 +2134,73 @@ function render2D(t) {
   ctx.restore();
 }
 
+/* ---- 描いている線の光(平面・立体共通) ---- */
+function drawTrailGlow(t) {
+  if (!trail.length) return;
+  const col = player.usedFast ? t.trailF : t.trailS;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14;
+  ctx.globalAlpha = 0.5 + 0.3 * Math.sin(blinkT * 10);
+  ctx.lineWidth = surf.is3D ? 4 : 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath();
+  let pen = false, prev = null;
+  for (const c of [trailStart].concat(trail, [player.c])) {
+    if (c < 0 || (surf.is3D && !visA[c])) { pen = false; continue; }
+    const p = surf.screenOf(c);
+    if (pen && Math.hypot(p.x - prev.x, p.y - prev.y) > 60) pen = false;
+    if (pen) ctx.lineTo(p.x, p.y); else { ctx.moveTo(p.x, p.y); pen = true; }
+    prev = p;
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 /* ---- 立体面の描画 ----
-   毎フレーム: 頂点を投影 → 裏向きのセルを捨てる → 色×陰影ごとにまとめて塗る */
+   毎フレーム: 頂点を投影 → 裏向きのセルを捨てる → 色×陰影ごとにまとめて塗る。
+   へこみのある形(星型・ドーナツ・クラインの壺)は奥から順に塗る(画家のアルゴリズム) */
 const buckets = [];
 for (let i = 0; i < NCOL * LV; i++) buckets.push([]);
 let vxA = new Float32Array(0), vyA = new Float32Array(0), visA = new Uint8Array(0);
+let zA = new Float32Array(0), keyA = new Uint16Array(0), frontA = new Uint8Array(0);
+const order = [];
+const DEPTH_LAYERS = 28;   // へこみのある形を塗るときの奥行きの層の数
 
 // 立体の輪郭のおおよその半径(画面上px)。裏側の敵の位置マーカーを置くのに使う
 function rimRadius() { return surf.sph ? cam.F / Math.sqrt(cam.D * cam.D - 1) : 290; }
 
-function render3D(t) {
-  const S = surf, R = cam.R, D = cam.D, F = cam.F, cx = cam.cx, cy = cam.cy;
-  // 星空
+// 宇宙の背景: 星雲と星。カメラの回転に合わせて流れる
+function drawBackdrop() {
+  const R = cam.R, cx = cam.cx, cy = cam.cy;
+  ctx.globalCompositeOperation = 'lighter';
+  for (const nb of NEBULA) {
+    const d = nb.d, Z = R[6] * d[0] + R[7] * d[1] + R[8] * d[2];
+    if (Z > 0.5) continue;
+    const x = cx + (R[0] * d[0] + R[1] * d[1] + R[2] * d[2]) * 560;
+    const y = cy - (R[3] * d[0] + R[4] * d[1] + R[5] * d[2]) * 560;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, nb.r);
+    g.addColorStop(0, `hsla(${(nb.h + animHue * 8) % 360}, 80%, 55%, 0.12)`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - nb.r, y - nb.r, nb.r * 2, nb.r * 2);
+  }
   ctx.fillStyle = '#ffffff';
   for (const s of STARS) {
-    ctx.globalAlpha = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(blinkT * 1.3 + s.ph));
-    ctx.fillRect(s.x, s.y, s.r, s.r);
+    const d = s.d, Z = R[6] * d[0] + R[7] * d[1] + R[8] * d[2];
+    if (Z > 0) continue;
+    const x = cx + (R[0] * d[0] + R[1] * d[1] + R[2] * d[2]) * 640;
+    const y = cy - (R[3] * d[0] + R[4] * d[1] + R[5] * d[2]) * 640;
+    if (x < 0 || x > W || y < FIELD_Y || y > H) continue;
+    ctx.globalAlpha = 0.3 + 0.35 * Math.sin(blinkT * 1.3 + s.ph);
+    ctx.fillRect(x, y, s.r, s.r);
   }
   ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function render3D(t) {
+  const S = surf, R = cam.R, D = cam.D, F = cam.F, cx = cam.cx, cy = cam.cy;
+  drawBackdrop();
   // 球の後ろにうっすら光の輪
   if (S.sph) {
     const rs = rimRadius();
@@ -1720,7 +2212,7 @@ function render3D(t) {
   }
 
   if (vxA.length < S.nv) { vxA = new Float32Array(S.nv); vyA = new Float32Array(S.nv); }
-  if (visA.length < S.N) visA = new Uint8Array(S.N);
+  if (visA.length < S.N) { visA = new Uint8Array(S.N); zA = new Float32Array(S.N); keyA = new Uint16Array(S.N); frontA = new Uint8Array(S.N); }
   const [r0, r1, r2, r3, r4, r5, r6, r7, r8] = R;
   const vp = S.vpos;
   for (let v = 0, o = 0; v < S.nv; v++, o += 3) {
@@ -1735,41 +2227,73 @@ function render3D(t) {
   const lz = r2 * LIGHT_V[0] + r5 * LIGHT_V[1] + r8 * LIGHT_V[2];
 
   for (const b of buckets) b.length = 0;
-  const nor = S.nor, nc = S.nc, par = S.par;
+  order.length = 0;
+  const nor = S.nor, nc = S.nc, par = S.par, P = S.pos, now = blinkT;
   const sealed = state === 'clear';
   const trailCi = player.usedFast ? 4 : 5;
   for (let c = 0; c < S.N; c++) {
     const nx = nor[c * 3], ny = nor[c * 3 + 1], nz = nor[c * 3 + 2];
-    // 裏向き判定: 法線・(カメラ位置 − セル位置) > 0 なら見えている
-    if (D * (r6 * nx + r7 * ny + r8 * nz) - nc[c] <= 0) { visA[c] = 0; continue; }
+    // 表向き判定: 法線・(カメラ位置 − セル位置) > 0
+    const front = D * (r6 * nx + r7 * ny + r8 * nz) - nc[c] > 0;
+    frontA[c] = front ? 1 : 0;
+    if (!front && !S.twoSided) { visA[c] = 0; continue; }
     visA[c] = 1;
     const g = grid[c];
     let ci;
     if (g === OPEN) ci = sealed ? 2 : par[c];
     else if (g === TRAIL) ci = trailCi;
-    else { const a = colA[c]; ci = a === 0 ? 3 : a === HOME_COL ? 6 : 6 + a + (par[c] ? 8 : 0); }
-    const lit = nx * lx + ny * ly + nz * lz;
-    const lvl = lit <= 0 ? 0 : Math.min(LV - 1, (lit * LV) | 0);
-    buckets[ci * LV + lvl].push(c);
-  }
-  const Q = S.quad, K = 1.1; // K: 継ぎ目の隙間を消すため少し膨らませる
-  for (let bi = 0; bi < buckets.length; bi++) {
-    const arr = buckets[bi];
-    if (!arr.length) continue;
-    ctx.fillStyle = col3D[bi];
-    ctx.beginPath();
-    for (const c of arr) {
-      const a = Q[c * 4], b = Q[c * 4 + 1], d = Q[c * 4 + 2], e = Q[c * 4 + 3];
-      const mx = (vxA[a] + vxA[b] + vxA[d] + vxA[e]) * 0.25, my = (vyA[a] + vyA[b] + vyA[d] + vyA[e]) * 0.25;
-      ctx.moveTo(mx + (vxA[a] - mx) * K, my + (vyA[a] - my) * K);
-      ctx.lineTo(mx + (vxA[b] - mx) * K, my + (vyA[b] - my) * K);
-      ctx.lineTo(mx + (vxA[d] - mx) * K, my + (vyA[d] - my) * K);
-      ctx.lineTo(mx + (vxA[e] - mx) * K, my + (vyA[e] - my) * K);
-      ctx.closePath();
+    else {
+      const ca = claimAt[c];
+      if (ca > now) ci = par[c];                    // 塗りの波がまだ届いていない
+      else if (now - ca < 0.3) ci = FLASH_CI;       // 波が通った瞬間に光る
+      else { const a = colA[c]; ci = a === 0 ? 3 : a === HOME_COL ? 6 : 6 + a + (par[c] ? 8 : 0); }
     }
-    ctx.fill();
+    let lit = nx * lx + ny * ly + nz * lz;
+    if (S.twoSided) lit = 0.35 + 0.65 * Math.abs(lit);
+    let lvl = lit <= 0 ? 0 : Math.min(LV - 1, (lit * LV) | 0);
+    if (!front) lvl = Math.max(0, lvl - 3);         // 両面の形: 内側は暗く
+    if (S.sorted) {
+      // 奥行きを DEPTH_LAYERS 層に分け、層の中では色ごとにまとめる(塗る回数を減らす)
+      const z = r6 * P[c * 3] + r7 * P[c * 3 + 1] + r8 * P[c * 3 + 2];
+      const layer = clamp(((z + 1.05) / 2.1 * DEPTH_LAYERS) | 0, 0, DEPTH_LAYERS - 1);
+      order.push(c);
+      keyA[c] = ci * LV + lvl;
+      zA[c] = layer * 4096 + keyA[c];
+    } else buckets[ci * LV + lvl].push(c);
+  }
+  const Q = S.quad, K = S.translucent ? 1.02 : 1.1; // K: 継ぎ目の隙間を消すため少し膨らませる
+  const quadPath = c => {
+    const a = Q[c * 4], b = Q[c * 4 + 1], d = Q[c * 4 + 2], e = Q[c * 4 + 3];
+    const mx = (vxA[a] + vxA[b] + vxA[d] + vxA[e]) * 0.25, my = (vyA[a] + vyA[b] + vyA[d] + vyA[e]) * 0.25;
+    ctx.moveTo(mx + (vxA[a] - mx) * K, my + (vyA[a] - my) * K);
+    ctx.lineTo(mx + (vxA[b] - mx) * K, my + (vyA[b] - my) * K);
+    ctx.lineTo(mx + (vxA[d] - mx) * K, my + (vyA[d] - my) * K);
+    ctx.lineTo(mx + (vxA[e] - mx) * K, my + (vyA[e] - my) * K);
+    ctx.closePath();
+  };
+  if (!S.sorted) {
+    for (let bi = 0; bi < buckets.length; bi++) {
+      const arr = buckets[bi];
+      if (!arr.length) continue;
+      ctx.fillStyle = col3D[bi];
+      ctx.beginPath();
+      for (const c of arr) quadPath(c);
+      ctx.fill();
+    }
+  } else {
+    order.sort((a, b) => zA[a] - zA[b]);            // 奥の層から、層の中は色ごと
+    if (S.translucent) ctx.globalAlpha = 0.8;
+    let cur = -1;
+    for (const c of order) {
+      const k = keyA[c];
+      if (k !== cur) { if (cur >= 0) ctx.fill(); cur = k; ctx.fillStyle = col3D[k]; ctx.beginPath(); }
+      quadPath(c);
+    }
+    if (cur >= 0) ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
+  drawTrailGlow(t);
   // 導火線
   if (fuse.lit && player.drawing && trail.length) {
     const c = trail[Math.min(Math.floor(fuse.pos), trail.length - 1)];
@@ -1778,13 +2302,16 @@ function render3D(t) {
   // SPARX(裏側にいるものは輪郭の外にマーカー)
   for (const s of sparxes) {
     const p = S.screenOf(s.c);
-    if (visA[s.c]) drawSparx(p.x, p.y, s);
-    else drawOffMarker(p, '#ffe25c', 5);
+    if (!visA[s.c]) { drawOffMarker(p, '#ffe25c', 5); continue; }
+    ctx.globalAlpha = frontA[s.c] ? 1 : 0.3;      // 両面の形: 向こう側は透けて薄く
+    drawSparx(p.x, p.y, s);
+    ctx.globalAlpha = 1;
   }
 
   drawPlayer(t);
 
-  // QIX: 腕は表面に沿った折れ線。見えている部分だけ描く
+  // QIX: 腕は表面に沿った折れ線。見えている部分だけ、加算合成で光らせる
+  ctx.globalCompositeOperation = 'lighter';
   for (const q of qixes) {
     for (let i = 0; i < q.segs.length; i++) {
       const s = q.segs[i];
@@ -1793,18 +2320,27 @@ function render3D(t) {
       ctx.strokeStyle = qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
       ctx.lineWidth = last ? 3 : 2;
       if (last) { ctx.shadowColor = qixStroke(s.h, 60, 0.9); ctx.shadowBlur = 8; }
-      ctx.beginPath();
-      let pen = false;
+      // 表側(near)と、両面の形で向こう側に透けて見える部分(far)を分けて描く
+      const near = new Path2D(), far = new Path2D();
+      let pen = null, pw = null, psp = null;
       for (const p of s.pts) {
-        if (!visA[S.cellAt(p[0], p[1], p[2])]) { pen = false; continue; }
-        const w = S.world(p), sp = projXYZ(w[0] * 1.012, w[1] * 1.012, w[2] * 1.012);
-        if (pen) ctx.lineTo(sp.x, sp.y); else { ctx.moveTo(sp.x, sp.y); pen = true; }
+        const c = S.ptCell(p);
+        if (!visA[c]) { pen = null; continue; }
+        const w = S.world(p);
+        if (pw && vdist(w, pw) > 0.3) pen = null;    // 貼り合わせの縁をまたいだら切る
+        pw = w;
+        const sp = projXYZ(w[0] * 1.012, w[1] * 1.012, w[2] * 1.012), path = frontA[c] ? near : far;
+        if (pen === path) path.lineTo(sp.x, sp.y);
+        else { path.moveTo(psp && pen ? psp.x : sp.x, psp && pen ? psp.y : sp.y); path.lineTo(sp.x, sp.y); }
+        pen = path; psp = sp;
       }
-      ctx.stroke();
+      ctx.stroke(near);
+      const al0 = ctx.globalAlpha; ctx.globalAlpha = 0.22; ctx.stroke(far); ctx.globalAlpha = al0;
       ctx.shadowBlur = 0;
     }
-    if (!visA[S.qixCell(q)]) drawOffMarker(S.qixScreen(q), qixStroke(q.hue, 62, 1), 9);
   }
+  ctx.globalCompositeOperation = 'source-over';
+  for (const q of qixes) if (!visA[S.qixCell(q)]) drawOffMarker(S.qixScreen(q), qixStroke(q.hue, 62, 1), 9);
 }
 
 // 裏側にいる敵の方向を、輪郭の外側に三角で示す
@@ -1865,11 +2401,8 @@ function renderHUD() {
   ctx.textAlign = 'right';
   ctx.fillStyle = '#8fa3d9';
   ctx.font = "bold 11px 'Courier New', monospace";
-  ctx.fillText('AREA ' + level + ' ' + surf.key, W - 52, 16);
-  for (let i = 0; i < Math.min(lives, 8); i++) {
-    ctx.fillStyle = '#ff3b6b';
-    drawDiamond(W - 58 - i * 13, 28, 5);
-  }
+  ctx.fillText('AREA ' + level + ' ' + surf.def.label, W - 52, 16);
+  for (let i = 0; i < Math.min(lives, 6); i++) drawClawd(W - 62 - i * 16, 30, 1);
   ctx.fillStyle = '#6d7ba8';
   ctx.font = "bold 10px 'Courier New', monospace";
   ctx.fillText(settings.diff, W - 52, 50);
@@ -1924,16 +2457,21 @@ function renderOverlay() {
     ctx.fillStyle = '#8fa3d9';
     ctx.font = "bold 17px 'Courier New', monospace";
     ctx.fillText('─ 陣取りアーケード v3 ─', W / 2, 258);
+    // Clawd がタイトルの上を行ったり来たり
+    {
+      const ph = blinkT * 0.7, x = W / 2 + Math.sin(ph) * 150;
+      drawClawd(x, 158, 2, { moving: true, walkF: Math.floor(blinkT * 8) & 1, look: Math.cos(ph) > 0 ? 1 : -1 });
+    }
 
     ctx.font = "15px 'Courier New', monospace";
     ctx.fillStyle = '#cdd8ff';
     const lines = [
       '↑↓←→ / WASD : 移動',
-      'Z or SPACE  : 速く引く (×1)',
-      'X or SHIFT  : 遅く引く (×2)',
+      '空き地へ進むと線を引く (ゆっくり ×2点)',
+      'Z / SPACE を押す間だけ 速く引く (×1点)',
       '',
       '線で囲んで陣地を広げろ!',
-      '立方体・球では 表面をぐるっと陣取り',
+      '多面体・星型・クラインの壺の表面でも陣取り',
       'AREA 3 からは QIX 2体 ── 分断で即クリア',
       'QIX・SPARX・導火線に注意',
     ];
@@ -1945,10 +2483,12 @@ function renderOverlay() {
     ctx.fillRect(titleModeRect.x, titleModeRect.y, titleModeRect.w, titleModeRect.h);
     ctx.fillStyle = t.accent;
     ctx.font = "bold 17px 'Courier New', monospace";
-    ctx.fillText('◀  ' + MODE_LABEL[settings.mode] + '  ▶', W / 2, 526);
-    ctx.fillStyle = '#6d7ba8';
+    ctx.fillText('◀  ' + modeLabel(settings.mode) + '  ▶', W / 2, 518);
+    ctx.fillStyle = '#8fa3d9';
     ctx.font = "bold 11px 'Courier New', monospace";
-    ctx.fillText('←→ で盤面をえらぶ', W / 2, 558);
+    ctx.fillText(modeSub(settings.mode) + '   (' + (MODES.indexOf(settings.mode) + 1) + '/' + MODES.length + ')', W / 2, 536);
+    ctx.fillStyle = '#6d7ba8';
+    ctx.fillText('←→ で盤面をえらぶ', W / 2, 560);
 
     if (blinkOn) {
       ctx.fillStyle = '#ffd76b';
@@ -1977,14 +2517,14 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 240, dy = 58;
+    const y0 = 232, dy = 52;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
-      optRects.push({ x: 76, y: y - 30, w: W - 152, h: 46, idx: i });
+      optRects.push({ x: 76, y: y - 30, w: W - 152, h: 44, idx: i });
       const sel = i === optSel;
       if (sel) {
         ctx.fillStyle = 'rgba(90,120,220,.18)';
-        ctx.fillRect(76, y - 30, W - 152, 46);
+        ctx.fillRect(76, y - 30, W - 152, 44);
         ctx.fillStyle = t.accent;
         ctx.font = "bold 17px 'Courier New', monospace";
         ctx.textAlign = 'left';
@@ -2011,7 +2551,7 @@ function renderOverlay() {
       } else {
         let vs;
         if (it.bool) vs = settings[it.k] ? 'ON' : 'OFF';
-        else if (it.vals) vs = it.k === 'diff' ? settings.diff : it.vals[settings[it.k] | 0];
+        else if (it.vals) vs = it.str ? settings[it.k] : it.vals[settings[it.k] | 0];
         else vs = String(settings[it.k]);
         ctx.fillStyle = sel ? '#ffffff' : '#aab6dd';
         ctx.fillText('◀ ' + vs + ' ▶', W - 84, y);
@@ -2035,13 +2575,16 @@ function renderOverlay() {
       ctx.fillStyle = '#cdd8ff';
       ctx.font = "bold 18px 'Courier New', monospace";
       ctx.fillText('── ' + surf.def.label + ' ──', W / 2, H / 2 - 6);
+      ctx.fillStyle = '#8fa3d9';
+      ctx.font = "bold 12px 'Courier New', monospace";
+      ctx.fillText(surf.def.sub, W / 2, H / 2 + 12);
       if (blinkOn) {
         ctx.fillStyle = '#ffffff';
         ctx.font = "bold 22px 'Courier New', monospace";
-        ctx.fillText('READY', W / 2, H / 2 + 30);
+        ctx.fillText('READY', W / 2, H / 2 + 42);
       }
       ctx.font = "bold 15px 'Courier New', monospace";
-      let y = H / 2 + 68;
+      let y = H / 2 + 76;
       if (surf.is3D) {
         ctx.fillStyle = '#8fa3d9';
         ctx.fillText('カメラが自機を追う ─ キーは画面の向き', W / 2, y);
@@ -2123,6 +2666,7 @@ function loop(now) {
   stTimer += dt;
 
   tickMeta(dt);
+  tickTheme(dt);
   if (state === 'play') update(dt);
   else {
     // タイトル/オプション/READYではQIXがアトラクト的に泳ぐ
@@ -2218,12 +2762,6 @@ bindHold('b-fast', () => {
   held.fast = true;
   if (state !== 'play' && state !== 'ready' && state !== 'pause' && state !== 'options') onAction();
 }, () => { held.fast = false; });
-bindHold('b-slow', () => {
-  held.slow = true;
-  if (state === 'title') openOptions();
-  else if (state !== 'play' && state !== 'ready' && state !== 'pause' && state !== 'options') onAction();
-}, () => { held.slow = false; });
-
 // キャンバス上のタップを状態別に振り分け
 function canvasPos(e) {
   const r = cv.getBoundingClientRect();
