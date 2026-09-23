@@ -398,5 +398,94 @@ for (let i = 0; i < 4; i++) stepK(0); for (let i = 0; i < 3; i++) stepK(1); for 
   assert('歩くと向きと歩き時刻が変わる', player.look === -1 && player.moveT === blinkT);
 }
 
+
+// ---- 32) アイテム: 囲むと手に入る ----
+function claimBox() { // HOMEから外へ4 → 横へ3 → 戻る(立体・平面どちらも格子の向きで)
+  for (let i = 0; i < 4; i++) stepK(0); for (let i = 0; i < 3; i++) stepK(1);
+  for (let i = 0; i < 20 && player.drawing; i++) stepK(2);
+}
+settings.mode = 'SPHERE'; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 99;
+{
+  // 囲まれる予定の場所(HOMEのすぐ外側の内側セル)にアイテムを置く
+  const c0 = player.c, a1 = surf.nb[c0 * 4], a2 = surf.nb[a1 * 4], inside = surf.nb[a2 * 4 + 1];
+  items = [{ c: inside, k: 'slow', t: 0 }, { c: surf.nb[surf.nb[inside * 4] * 4], k: 'star', t: 0 }];
+  const livesB = lives;
+  claimBox();
+  assert('囲んだアイテムを取得(SLOW発動)', slowT > 0 && !items.some(it => it.k === 'slow'), 'slowT=' + slowT.toFixed(1));
+  assert('SLOW中は敵の速さが下がる', enemySlow() < 1);
+  items = [{ c: 0, k: 'life', t: 0 }]; grid[0] = WALL; collectItems();
+  assert('1UPで残機+1', lives === livesB + 1);
+  items = [{ c: 0, k: 'shield', t: 0 }]; collectItems();
+  assert('SHIELDを持つ', player.shield === true);
+  player.invuln = 0; const l0 = lives; death();
+  assert('SHIELDでミスを防ぐ(GUARD)', guarded && deathTimer > 0);
+  for (let i = 0; i < 60 && deathTimer > 0; i++) update(1/30);
+  assert('SHIELD使用後も残機は減らない・SHIELDは消える', lives === l0 && !player.shield && !guarded, lives + '/' + l0);
+}
+{
+  items = []; itemTimer = 0; updateItems(0.01);
+  assert('時間でアイテムが出現(空き地に)', items.length === 1 && grid[items[0].c] === OPEN);
+  items[0].t = CONFIG.ITEM_LIFE; updateItems(0.01);
+  assert('時間切れでアイテムが消える', items.length === 0);
+}
+
+// ---- 33) コンボとSTAR ----
+settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 99; held.fast = false;
+{
+  const s0 = score; steps(0, -1, 3); steps(-1, 0, 3); steps(0, 1, 5);
+  const p1 = score - s0;
+  assert('1回目はコンボなし', combo === 0 && comboT > 0);
+  const s1 = score; steps(-1, 0, 4); steps(0, -1, 3); steps(-1, 0, 3); steps(0, 1, 5);
+  assert('続けて囲むとコンボ', combo === 1, 'combo=' + combo + ' +' + (score - s1));
+  comboT = 0; starT = 5; const s2 = score;
+  steps(-1, 0, 4); steps(0, -1, 3); steps(-1, 0, 3); steps(0, 1, 5);
+  assert('STAR中は得点2倍(同じ大きさの囲みで2倍)', score - s2 === p1 * 2, (score - s2) + ' vs ' + p1 * 2);
+}
+
+// ---- 34) 記録・ポーズメニュー・なぞり操作・裏側ビュー ----
+{
+  settings.mode = 'CUBE'; startGame(); stTimer = 2; tickMeta(0.016);
+  claimed = Math.ceil(initOpen * 0.8); startClear(false);
+  assert('クリアで盤面の最高占領率を記録', bestPct.CUBE >= 80 && store.get('qlaim.best', {}).CUBE >= 80, bestPct.CUBE);
+  startGame(); stTimer = 2; tickMeta(0.016);
+  togglePause();
+  assert('ポーズでメニュー', state === 'pause' && pauseSel === 0);
+  pauseChoose(1);
+  assert('「はじめから」でAREA1から', state === 'ready' && level === 1);
+  stTimer = 2; tickMeta(0.016); togglePause(); pauseChoose(2);
+  assert('「タイトルへ」', state === 'title');
+  assert('なぞりの向き', dirFromDrag(30, 5) === 'right' && dirFromDrag(-3, -40) === 'up' && dirFromDrag(-50, 10) === 'left' && dirFromDrag(2, 9) === 'down');
+  let err = null;
+  try { for (const md of ['CUBE', 'KLEIN', 'TORUS']) { settings.mode = md; startGame(); stTimer = 2; tickMeta(0.016); items = [{ c: 5, k: 'star', t: 0 }]; render(); } }
+  catch (e) { err = e.stack; }
+  assert('裏側ビュー・アイテム・状態表示の描画が例外なし', !err, err);
+}
+
+// ---- 35) 曲の構成(セクションが巡る) ----
+{
+  let bad = [];
+  for (const k in BGMDATA) {
+    const sg = BGMDATA[k];
+    if (k === 'title') continue;
+    if (!sg.form || sg.form.length < 3) bad.push(k + ':formなし');
+    else for (const sec of sg.form) {
+      if (!(sec.n >= 1)) bad.push(k + ':n');
+      if (sec.mute && sec.mute.some(i => i < 0 || i >= sg.tracks.length)) bad.push(k + ':mute');
+    }
+    for (const tr of sg.tracks) {
+      if (tr.s2 && tr.s2.length !== sg.len) bad.push(k + ':s2長');
+      if (tr.s2) for (const nm of tr.s2) if (nm && !/^([A-G])(#?)(-?\d)$/.test(nm)) bad.push(k + ':' + nm);
+      if (tr.p2 && tr.p2.some(x => x >= sg.len)) bad.push(k + ':p2');
+    }
+    if (!sg.form || !sg.form.some(x => x.alt || x.t || x.drums === false || x.mute)) bad.push(k + ':変化なし');
+  }
+  assert('全曲に構成があり、別メロ・転調・ブレイクなどの変化を含む', bad.length === 0, bad.join(','));
+  Bgm._load('play');
+  const seen = [];
+  for (let i = 0; i < 20; i++) { seen.push(Bgm.section); Bgm._advance(); }
+  assert('曲を進めるとセクションが順に巡って頭に戻る', seen.join('') === '00112334400112334400', seen.join(''));
+  Bgm.stop();
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

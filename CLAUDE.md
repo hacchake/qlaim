@@ -25,6 +25,8 @@ node test/run-tests.js
 3. `THEMES` — 配色テーマ6種。`anim` 付き(PRISM/AURORA)は占領色が時間で移ろう(`tickTheme`)
 4. `BGMDATA` — BGM譜面7曲(title/play/orbit/chip/drone/ambient/idm)。音名で記述(♭は#)。
    音色パラメータ a/r/det/echo/ed/pr/oj、ドラム blip あり。`at(len,{step:'音名'})` は疎な譜面の略記
+   `form` = 曲の構成(セクションの並び。n回数/t移調/alt別メロs2・別リズムp2/mute/drums:false/boost)。
+   セクション切替前は自動でスネアのフィル。`ITEMS` — アイテム4種(SLOW/SHIELD/STAR/1UP)
 5. `store` / `settings` / `hiScores`(ハイスコアはモード別。v2の値はPLANEへ引継ぎ)
 6. `Snd` — 効果音+BGM音源、`Bgm` — 先読みシーケンサ(確率・やまびこ対応)
 7. 盤面(サーフェス):
@@ -40,6 +42,13 @@ node test/run-tests.js
 11. 進行: 状態は title / options / ready / play / pause / clear / over
 12. 描画: `render2D` / `render3D`(へこみのある形は奥行きを層に分けて奥から) / `drawBackdrop`(星雲・星)
     `drawTrailGlow` / `drawClawd`(自機のドット絵) / `renderHUD` / `renderOverlay`、入力
+
+## v4 の遊び要素
+- アイテム: 空き地に出現し、線で囲む(=占領でセルが空き地でなくなる)と `collectItems` で取得。
+- コンボ: `COMBO_TIME` 秒以内に続けて囲むと倍率アップ。STAR 中はさらに2倍。
+- SHIELD: `death()` で消費され、`guarded` の間は残機を減らさない(線は消える)。
+- 記録: `bestPct`(盤面ごとのクリア時最高占領率, localStorage `qlaim.best`)。
+- 裏側ビュー `drawBackView`、効果表示 `drawStatus`、ポーズメニュー `PAUSE_ITEMS`、なぞり操作 `dirFromDrag`。
 
 ## 操作
 - 方向キーで空き地へ進むと、ボタン無しでゆっくり線を引く(×2点)。Z/スペースを押している間だけ速い(×1点)。
