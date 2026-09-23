@@ -274,10 +274,12 @@ initLevel(3); setState('play');
 // ---- 23) タイトルで盤面モード切替 ----
 setState('title'); settings.mode = 'TOUR';
 cycleMode(1);
-assert('モード切替 TOUR→PLANE', settings.mode === 'PLANE' && surf.key === 'PLANE');
+assert('モード切替 TOUR→DAILY', settings.mode === 'DAILY' && surf.key === dailyList()[0]);
+cycleMode(1);
+assert('モード切替 DAILY→PLANE', settings.mode === 'PLANE' && surf.key === 'PLANE');
 cycleMode(1); cycleMode(1);
 assert('モード切替 →SPHERE で盤面も球に', settings.mode === 'SPHERE' && surf.key === 'SPHERE');
-for (let i = 3; i < MODES.length; i++) cycleMode(1);
+for (let i = 4; i < MODES.length; i++) cycleMode(1);
 assert('モード切替は一周する', settings.mode === 'TOUR', MODES.length);
 for (let i = 0; i < 60; i++) tickMeta(1/60);
 assert('タイトル中も動作(カメラ回転で例外なし)', state === 'title');
@@ -524,6 +526,21 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('上位5件を高い順に保持', r.length === 5 && r[0].s === 9000 && r[4].s === 100 && !qualifies(90) && qualifies(20000), r.map(e => e.s).join(','));
   let err = null; try { render(); setState('entry'); render(); } catch (e) { err = e.stack; }
   assert('ランキング・名前入力の描画が例外なし', !err, err);
+}
+
+
+// ---- 38) DAILY(今日の3面) ----
+{
+  const a = dailyList('20260924'), b = dailyList('20260924'), c = dailyList('20260925');
+  assert('DAILY: 同じ日は同じ3面・別の日は別', a.join() === b.join() && a.join() !== c.join() && new Set(a).size === 3 && !a.includes('PLANE'), a.join() + ' / ' + c.join());
+  settings.mode = 'DAILY';
+  const d = dailyList();
+  assert('DAILY: エリア1〜3が今日の3面', surfaceFor(1) === d[0] && surfaceFor(2) === d[1] && surfaceFor(3) === d[2] && surfaceFor(4) === d[0]);
+  assert('DAILY: 記録は日付つきのキー', modeKey() === 'DAILY:' + todayStr());
+  startGame(); score = 777; saveHi();
+  assert('DAILY: ハイスコアは今日の分として保存', hiOf('DAILY:' + todayStr()) === 777 && hiOf('DAILY') === 0);
+  setState('title'); let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('DAILY: タイトル描画', !err, err);
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

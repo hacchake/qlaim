@@ -213,9 +213,34 @@ function pickItemKind() {
 }
 
 /* ---- 遊ぶ盤面(タイトル画面で ←→ で選択) ---- */
-const MODES = ['TOUR'].concat(Object.keys(CONFIG.SURF));
-function modeLabel(m) { return m === 'TOUR' ? 'TOUR ─ ぜんぶ巡る' : CONFIG.SURF[m].label; }
-function modeSub(m) { return m === 'TOUR' ? CONFIG.TOUR.length + '種類の盤面を順番に' : CONFIG.SURF[m].sub; }
+const MODES = ['TOUR', 'DAILY'].concat(Object.keys(CONFIG.SURF));
+
+/* ---- DAILY: 日付で決まる「今日の3面」。記録も日ごと ---- */
+function todayStr(d) {
+  d = d || new Date();
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+// 日付の文字列から決まる並び(同じ日なら誰がやっても同じ)
+function dailyList(ds) {
+  let h = 2166136261;
+  for (const ch of (ds || todayStr())) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const rnd = () => { h = (Math.imul(h ^ (h >>> 15), 2246822507) + 0x9e3779b9) >>> 0; return h / 4294967296; };
+  const pool = Object.keys(CONFIG.SURF).filter(k => k !== 'PLANE'), out = [];
+  while (out.length < 3) { const k = pool[(rnd() * pool.length) | 0]; if (!out.includes(k)) out.push(k); }
+  return out;
+}
+// 記録(ハイスコア・ランキング)の保存キー。DAILY は日付つき
+function modeKey() { return settings.mode === 'DAILY' ? 'DAILY:' + todayStr() : settings.mode; }
+function modeLabel(m) {
+  if (m === 'TOUR') return 'TOUR ─ ぜんぶ巡る';
+  if (m === 'DAILY') return 'DAILY ─ 今日の3面';
+  return CONFIG.SURF[m].label;
+}
+function modeSub(m) {
+  if (m === 'TOUR') return CONFIG.TOUR.length + '種類の盤面を順番に';
+  if (m === 'DAILY') return dailyList().map(k => CONFIG.SURF[k].label).join(' → ');
+  return CONFIG.SURF[m].sub;
+}
 
 /* ---- BGMの選び方(OPTIONS)。AUTO は盤面ごとの music ---- */
 const MUSIC_KEYS = ['AUTO', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM'];
@@ -490,14 +515,14 @@ function hiOf(mode) { return hiScores[mode] | 0; }
 const RANK_N = 5;
 const ranks = store.get('qlaim.rank', {});
 function rankOf(mode) { return ranks[mode] || []; }
-function qualifies(sc) { const r = rankOf(settings.mode); return sc > 0 && (r.length < RANK_N || sc > r[r.length - 1].s); }
+function qualifies(sc) { const r = rankOf(modeKey()); return sc > 0 && (r.length < RANK_N || sc > r[r.length - 1].s); }
 // 登録して、その順位(0始まり)を返す
 function addRank(name, sc, area) {
-  const r = rankOf(settings.mode).concat([{ n: name, s: sc, a: area }]);
+  const key = modeKey(), r = rankOf(key).concat([{ n: name, s: sc, a: area }]);
   r.sort((a, b) => b.s - a.s);
-  ranks[settings.mode] = r.slice(0, RANK_N);
+  ranks[key] = r.slice(0, RANK_N);
   store.set('qlaim.rank', ranks);
-  return ranks[settings.mode].findIndex(e => e.n === name && e.s === sc);
+  return ranks[key].findIndex(e => e.n === name && e.s === sc);
 }
 // 名前入力
 const NAME_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-*';
@@ -531,7 +556,7 @@ function saveBest() {
 }
 function saveHi() {
   if (score > hiScore) hiScore = score;
-  hiScores[settings.mode] = hiScore;
+  hiScores[modeKey()] = hiScore;
   store.set('qlaim.hi3', hiScores);
 }
 
@@ -1345,6 +1370,7 @@ function getSurface(key) {
   return SURF_CACHE[key];
 }
 function surfaceFor(lv) {
+  if (settings.mode === 'DAILY') { const d = dailyList(); return d[(lv - 1) % d.length]; }
   if (settings.mode !== 'TOUR') return settings.mode;
   return CONFIG.TOUR[(lv - 1) % CONFIG.TOUR.length];
 }
@@ -1409,7 +1435,7 @@ function updateCamera(dt) {
 let surf = getSurface('PLANE');
 let grid, colA;                 // セル状態 / 占領色(0=線, 1..8=占領色, 9=HOME)
 let claimed = 0, initOpen = 1;  // 占領セル数 / 初期空きセル数
-let level = 1, score = 0, hiScore = hiOf(settings.mode);
+let level = 1, score = 0, hiScore = hiOf(modeKey());
 let lives = settings.lives;
 let nextExtend = CONFIG.EXTEND_FIRST;
 let state = 'title', stTimer = 0, blinkT = 0;
@@ -2013,6 +2039,7 @@ function startGame() {
   lives = settings.lives;
   level = 1;
   player.shield = false;
+  hiScore = hiOf(modeKey());      // 日付が変わっていても今日の記録を使う
   nextExtend = CONFIG.EXTEND_FIRST;
   initLevel(1);
   setState('ready');
@@ -2054,7 +2081,7 @@ function backToTitle() {
 function cycleMode(dir) {
   const i = MODES.indexOf(settings.mode);
   settings.mode = MODES[(i + dir + MODES.length) % MODES.length];
-  hiScore = hiOf(settings.mode);
+  hiScore = hiOf(modeKey());
   saveSettings();
   initLevel(1);
   Snd.blip();
@@ -2865,10 +2892,12 @@ function renderOverlay() {
     ctx.fillText(modeSub(settings.mode) + '   (' + (MODES.indexOf(settings.mode) + 1) + '/' + MODES.length + ')', W / 2, 536);
     // 記録: 単独の盤面ならその最高占領率、TOURならクリアした盤面の数
     const nClear = Object.keys(CONFIG.SURF).filter(k => bestPct[k] != null).length;
-    const rec = settings.mode === 'TOUR'
+    const rec = settings.mode === 'DAILY'
+      ? todayStr().replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') + ' の記録  ' + (hiScore ? String(hiScore).padStart(7, '0') : 'まだなし')
+      : settings.mode === 'TOUR'
       ? 'クリアした盤面  ' + nClear + ' / ' + Object.keys(CONFIG.SURF).length
       : bestPct[settings.mode] != null ? '★ クリア済み  最高 ' + bestPct[settings.mode] + '%' : '未クリア';
-    ctx.fillStyle = bestPct[settings.mode] != null || settings.mode === 'TOUR' ? '#ffd76b' : '#6d7ba8';
+    ctx.fillStyle = bestPct[settings.mode] != null || settings.mode === 'TOUR' || settings.mode === 'DAILY' ? '#ffd76b' : '#6d7ba8';
     ctx.fillText(rec + '    ←→ で盤面をえらぶ', W / 2, 560);
 
     if (blinkOn) {
@@ -3062,7 +3091,7 @@ function renderOverlay() {
   }
 
   if (state === 'over') {
-    const r = rankOf(settings.mode);
+    const r = rankOf(modeKey());
     panel(90, 250, W - 180, 330);
     ctx.fillStyle = '#ff5c8a';
     ctx.font = "bold 34px 'Courier New', monospace";
