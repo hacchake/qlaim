@@ -543,5 +543,28 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('DAILY: タイトル描画', !err, err);
 }
 
+
+// ---- 39) チュートリアル ----
+{
+  settings.tutor = false; settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  assert('初回はチュートリアル開始', tutorStep === 0);
+  held.fast = false; player.invuln = 99;
+  steps(-1, 0, 1);
+  assert('歩くと次のヒント', tutorStep === 1);
+  steps(0, -1, 2);
+  assert('線を引くと次のヒント', tutorStep === 2);
+  steps(-1, 0, 2); steps(0, 1, 5);
+  assert('囲むと次のヒント', tutorStep === 3);
+  for (let i = 0; i < 400 && tutorStep >= 0; i++) update(1/60);
+  assert('最後のヒントは時間で終わり、以後出ない', tutorStep === -1 && settings.tutor === true);
+  startGame();
+  assert('2回目はチュートリアルなし', tutorStep === -1);
+  let err = null; settings.tutor = false; startGame(); stTimer = 2; tickMeta(0.016);
+  try { render(); } catch (e) { err = e.stack; }
+  assert('チュートリアル描画が例外なし', !err, err);
+  settings.tutor = true; tutorStep = -1;
+  assert('スクリーンショットはtoBlobが無い環境では何もしない', saveShot() === false);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
