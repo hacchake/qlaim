@@ -1,0 +1,1642 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QLAIM ─ 陣取りアーケード</title>
+<style>
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:radial-gradient(ellipse at 50% 30%, #101528 0%, #05060d 70%);
+    overflow:hidden; touch-action:none;
+    font-family:'Courier New', monospace;
+  }
+  #wrap{
+    height:100%; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:8px;
+  }
+  #game{
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:#04050d;
+    box-shadow:0 0 40px rgba(60,90,255,.20), 0 0 5px rgba(255,255,255,.16);
+  }
+  /* 走査線(CRT効果 ON のときだけ) */
+  body.crt::after{
+    content:''; position:fixed; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.15) 0 1px, transparent 1px 3px);
+    mix-blend-mode:multiply;
+  }
+  /* ---- タッチ操作パッド(粗ポインタ端末のみ表示) ---- */
+  #pad{
+    display:none; width:100%; max-width:480px;
+    justify-content:space-between; align-items:center;
+    padding:4px 16px 14px; box-sizing:border-box;
+    user-select:none; -webkit-user-select:none;
+  }
+  @media (pointer:coarse){ #pad{ display:flex; } }
+  #dpad{ display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:5px; }
+  .pb,.ab{
+    border:1px solid #3a4a7a; border-radius:10px;
+    background:rgba(30,40,80,.55); color:#cdd8ff;
+    font:bold 19px 'Courier New',monospace;
+    touch-action:none; -webkit-tap-highlight-color:transparent;
+  }
+  .pb:active,.ab:active{ background:rgba(90,120,220,.7); }
+  .ghost{ visibility:hidden; }
+  #acts{ display:flex; gap:14px; }
+  .ab{ width:76px; height:76px; border-radius:50%; font-size:14px; line-height:1.2; }
+  #b-slow{ border-color:#a8632a; color:#ffcf9e; }
+  #b-fast{ border-color:#2e86ab; color:#a8e4ff; }
+  .ab small{ font-size:10px; opacity:.8; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="640" height="856"></canvas>
+  <div id="pad">
+    <div id="dpad">
+      <button class="pb ghost"></button><button class="pb" id="b-up">▲</button><button class="pb ghost"></button>
+      <button class="pb" id="b-left">◀</button><button class="pb ghost"></button><button class="pb" id="b-right">▶</button>
+      <button class="pb ghost"></button><button class="pb" id="b-down">▼</button><button class="pb ghost"></button>
+    </div>
+    <div id="acts">
+      <button class="ab" id="b-slow">SLOW<br><small>×2点</small></button>
+      <button class="ab" id="b-fast">FAST</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   QLAIM v2 ─ Qix風 陣取りアーケード (単一HTML / 依存なし / WebAudio合成)
+
+   ルール:
+   ・線の上を移動し、Z(速い/×1点) か X(遅い/×2点) を押しながら
+     空き地に線を引く。線が閉じると QIX のいない側が塗り潰される
+   ・75% 占領でエリアクリア。AREA 3 からは QIX が2体になり、
+     線で「分断」すると即クリア + SPLITボーナス
+   ・QIXが線に触れる / SPARXに触れる / 導火線に追いつかれる → ミス
+   ・描画中に立ち止まると導火線に点火。動けば止まり、止まると迫る
+
+   ── カスタマイズ ────────────────────────────
+   ・数値バランス      → すぐ下の CONFIG
+   ・難易度プリセット  → DIFFS
+   ・配色テーマ        → THEMES(ゲーム内OPTIONSで切替可)
+   ・BGMの譜面         → BGMDATA(音名で書けます。'A2' 'G#4' など)
+   ・ゲーム内OPTIONS   → 音量 / 難易度 / 残機 / テーマ / CRT効果
+     (設定とハイスコアは localStorage が使える環境なら自動保存。
+      使えない環境ではセッション内のみ保持)
+===================================================================== */
+const CONFIG = {
+  /* -- 画面・フィールド ---------------------------------------- */
+  GRID_W: 128,          // フィールド横セル数
+  GRID_H: 160,          // フィールド縦セル数
+  CELL: 5,              // 1セルのピクセルサイズ
+  HUD_H: 56,            // 上部HUDの高さ(px)
+  TARGET: 75,           // クリアに必要な占領率(%)
+
+  /* -- 速度(セル/秒) ------------------------------------------ */
+  PLAYER_SPEED: 38,     // 線上の移動速度
+  DRAW_FAST: 38,        // FAST描画速度(×1点)
+  DRAW_SLOW: 18,        // SLOW描画速度(×2点)
+
+  QIX_SPEED: 14,        // QIX基本速度
+  QIX_ACCEL: 1.09,      // エリア毎のQIX速度倍率
+  QIX_ARM: 11,          // QIXの腕の長さ(セル)
+  TWO_QIX_FROM: 3,      // このエリア以降 QIX 2体(分断で即クリア)
+
+  SPARX_SPEED: 24,      // SPARX速度
+  SPARX_START: 2,       // 開始時のSPARX数
+  SPARX_INTERVAL: 25,   // 追加SPARXの出現間隔(秒)
+  SPARX_MAX: 6,         // SPARX最大数
+
+  FUSE_DELAY: 0.5,      // 停止→導火線点火までの猶予(秒)
+  FUSE_SPEED: 34,       // 導火線の速度(セル/秒)
+
+  /* -- ゲーム進行 ---------------------------------------------- */
+  LIVES: 3,             // 残機の既定値(OPTIONSで変更可)
+  EXTEND_FIRST: 20000,  // 最初の1UPスコア
+  EXTEND_EVERY: 50000,  // 以降の1UP間隔
+  INVULN: 2.0,          // 復活後の無敵時間(秒)
+  SPLIT_BONUS: 8000,    // QIX分断ボーナス(基本)
+  SPLIT_BONUS_LV: 2000, // 分断ボーナスのエリア加算
+  READY_TIME: 1.4,      // AREA表示(READY)の時間(秒)
+};
+
+/* ---- 難易度プリセット(OPTIONSで選択) ----
+   qix/sparx: 速度倍率, interval: SPARX追加間隔倍率, fuse: 導火線猶予倍率 */
+const DIFFS = {
+  EASY:   { qix: 0.80, sparx: 0.85, interval: 1.5, fuse: 1.5 },
+  NORMAL: { qix: 1.00, sparx: 1.00, interval: 1.0, fuse: 1.0 },
+  HARD:   { qix: 1.22, sparx: 1.18, interval: 0.7, fuse: 0.7 },
+};
+const DIFF_KEYS = ['EASY', 'NORMAL', 'HARD'];
+
+/* ---- 配色テーマ ----
+   line: 境界線 / fast: FAST占領色4種 / slow: SLOW占領色4種
+   trailF/S: 描画中の軌跡色 / accent: 強調色 / bgOuter,bg: 背景グラデ
+   qixHue: [min,max]でQIXの色相を制限(null=虹色) / qixSat0: trueで無彩色 */
+const THEMES = [
+  { name:'NEON',  bgOuter:'#101528', bg:'#05060d', field:'#04050d', hud:'#070a16',
+    line:'#e6ecff', accent:'#2fa9e8',
+    fast:['#1c4e9c','#155e8f','#28407f','#0e6d6d'],
+    slow:['#a33a2a','#a8632a','#8f2f4a','#9c5220'],
+    trailF:'#5fd0ff', trailS:'#ff7a52', qixHue:null, qixSat0:false },
+  { name:'CRT-G', bgOuter:'#07200e', bg:'#020a04', field:'#031006', hud:'#04140a',
+    line:'#b9ffd0', accent:'#4be07f',
+    fast:['#0f5132','#14663d','#0c4d40','#186a4f'],
+    slow:['#7a7a17','#8a6a12','#6f7d1a','#94801d'],
+    trailF:'#7dffb0', trailS:'#ffe86b', qixHue:[100,160], qixSat0:false },
+  { name:'VAPOR', bgOuter:'#1c0f30', bg:'#0b0614', field:'#0b0614', hud:'#120a20',
+    line:'#ffe6f7', accent:'#ff71ce',
+    fast:['#5e2f9c','#3a3f9c','#7a2a8f','#2f5e9c'],
+    slow:['#b3345c','#c05a2a','#a8318a','#c9812a'],
+    trailF:'#01cdfe', trailS:'#ff71ce', qixHue:[270,345], qixSat0:false },
+  { name:'MONO',  bgOuter:'#141414', bg:'#050505', field:'#060606', hud:'#0d0d0d',
+    line:'#f2f2f2', accent:'#cfcfcf',
+    fast:['#3a3a3a','#474747','#2f2f2f','#525252'],
+    slow:['#8a6a2a','#9c7a30','#7a5c22','#a8863a'],
+    trailF:'#e8e8e8', trailS:'#ffcf7a', qixHue:null, qixSat0:true },
+];
+
+/* ---- BGM 譜面データ ----------------------------------------------
+   音名で書けます: 'C4' 'G#3' など。null は休符。
+   t:'n' はメロディトラック { w:波形, v:音量, g:ゲート(音長=g×16分), l:レイヤー }
+   t:'kick'/'hat'/'snare' はドラム { p:[鳴らすステップ...], l:レイヤー }
+   レイヤー l は「盛り上がり段階」。占領率が上がるほど段階が増え、
+   l <= 現在段階 のトラックだけが鳴ります(0=常時)。
+   len=ステップ総数(16分音符換算)。bpm はテンポ。
+-------------------------------------------------------------------- */
+const BGMDATA = {
+  title: { bpm: 92, len: 16, fixed: 1, tracks: [
+    { t:'n', w:'triangle', v:0.11, g:7,   l:0, s:['A2',null,null,null,null,null,null,null,'F2',null,null,null,null,null,null,null] },
+    { t:'n', w:'sine',     v:0.060,g:0.95,l:0, s:['A4','E4','C5','E4','A4','E4','C5','E4','F4','C4','A4','C4','F4','C4','A4','C4'] },
+    { t:'n', w:'square',   v:0.028,g:0.5, l:1, s:[null,null,'E5',null,null,null,'C5',null,null,null,'A4',null,null,null,'B4',null] },
+    { t:'hat', v:0.045, l:0, p:[0,8] },
+  ]},
+  play: { bpm: 138, len: 32, tracks: [
+    { t:'n', w:'square',   v:0.090,g:0.85,l:0, s:[
+      'A2','A2',null,'A2', null,'A2','A3','A2',  'F2','F2',null,'F2', null,'F2','F3','F2',
+      'G2','G2',null,'G2', null,'G2','G3','G2',  'E2','E2',null,'E2', 'D2','D2','E2','E2'] },
+    { t:'n', w:'square',   v:0.050,g:0.5, l:1, s:[
+      'A4','C5','E5','A5','E5','C5','A4','C5',  'F4','A4','C5','F5','C5','A4','F4','A4',
+      'G4','B4','D5','G5','D5','B4','G4','B4',  'E4','G#4','B4','E5','B4','G#4','E4','B4'] },
+    { t:'n', w:'triangle', v:0.105,g:0.8, l:2, s:[
+      'A5',null,null,'G5', 'E5',null,'C5',null,  null,'A4',null,'C5', 'F5',null,'E5',null,
+      'D5',null,null,'B4', 'G5',null,'D5',null,  'E5',null,'G#5',null,'B5',null,'E5',null] },
+    { t:'kick',  v:0.55, l:0, p:[0,8,16,24,30] },
+    { t:'hat',   v:0.12, l:0, p:[2,6,10,14,18,22,26,30] },
+    { t:'hat',   v:0.07, l:3, p:[0,4,8,12,16,20,24,28] },
+    { t:'snare', v:0.30, l:2, p:[8,24] },
+  ]},
+};
+
+/* ---------------- 定数・ユーティリティ ---------------- */
+const GW = CONFIG.GRID_W, GH = CONFIG.GRID_H, CS = CONFIG.CELL;
+const FIELD_Y = CONFIG.HUD_H;
+const W = GW * CS, H = FIELD_Y + GH * CS;
+const OPEN = 0, WALL = 1, TRAIL = 2;
+const DIRS4 = [[0,-1],[1,0],[0,1],[-1,0]];
+const DIRV = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
+
+const idx = (x, y) => y * GW + x;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+
+// '#rrggbb' を明度倍率で暗く(占領地のディザ用)
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16 & 255) * k) | 0, g = ((n >> 8 & 255) * k) | 0, b = ((n & 255) * k) | 0;
+  return `rgb(${r},${g},${b})`;
+}
+// 音名 → 周波数('A4'=440)
+function hz(name) {
+  const m = /^([A-G])(#?)(-?\d)$/.exec(name);
+  if (!m) return 440;
+  const base = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[m[1]] + (m[2] ? 1 : 0);
+  const midi = 12 * (Number(m[3]) + 1) + base;
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+/* ---------------- 設定と保存(localStorage不可なら内部保持) ---------------- */
+const store = (() => {
+  const mem = {};
+  return {
+    get(k, d) {
+      try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }
+      catch (e) { return (k in mem) ? mem[k] : d; }
+    },
+    set(k, v) {
+      try { localStorage.setItem(k, JSON.stringify(v)); }
+      catch (e) { mem[k] = v; }
+    },
+  };
+})();
+
+const settings = Object.assign(
+  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: 0, crt: true },
+  store.get('qlaim.settings', {})
+);
+if (!DIFFS[settings.diff]) settings.diff = 'NORMAL';
+settings.theme = clamp(settings.theme | 0, 0, THEMES.length - 1);
+function saveSettings() { store.set('qlaim.settings', settings); }
+function diff() { return DIFFS[settings.diff]; }
+function theme() { return THEMES[settings.theme]; }
+
+/* ---------------- キャンバス ---------------- */
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// 占領済みフィールドはオフスクリーンに焼いておく(毎フレーム全セル描画を避ける)
+const fieldC = document.createElement('canvas');
+fieldC.width = GW * CS; fieldC.height = GH * CS;
+const fctx = fieldC.getContext('2d');
+
+// ビネット(周辺減光)も一度だけ焼く
+const vigC = document.createElement('canvas');
+vigC.width = W; vigC.height = H - FIELD_Y;
+{
+  const g = vigC.getContext('2d');
+  const gr = g.createRadialGradient(W/2, (H-FIELD_Y)/2, Math.min(W,H)*0.30, W/2, (H-FIELD_Y)/2, Math.max(W,H)*0.72);
+  gr.addColorStop(0, 'rgba(0,0,0,0)');
+  gr.addColorStop(1, 'rgba(0,0,0,0.38)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, W, H - FIELD_Y);
+}
+
+/* ---------------- サウンド (WebAudio合成 / SFX・BGM別バス) ---------------- */
+const Snd = (() => {
+  let ac = null, master = null, sfxG = null, bgmG = null;
+  let hum = null, muted = false, hatBuf = null;
+
+  function ensure() {
+    if (!ac) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ac = new AC();
+      master = ac.createGain(); master.connect(ac.destination);
+      sfxG = ac.createGain(); sfxG.connect(master);
+      bgmG = ac.createGain(); bgmG.connect(master);
+      // ハイハット用の短いノイズを1つだけ作って使い回す
+      const n = Math.floor(ac.sampleRate * 0.06);
+      hatBuf = ac.createBuffer(1, n, ac.sampleRate);
+      const d = hatBuf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      applyVols();
+      Bgm.onAudioReady();
+    }
+    if (!ac) return;
+    if (ac.state === 'suspended') ac.resume();
+  }
+  function applyVols() {
+    if (!ac) return;
+    master.gain.value = muted ? 0 : 0.9;
+    sfxG.gain.value = settings.sfx / 10;
+    bgmG.gain.value = (settings.bgm / 10) * 0.55;
+  }
+  function toggleMute() { muted = !muted; applyVols(); return muted; }
+
+  function bus(b) { return b === 'bgm' ? bgmG : sfxG; }
+  // 汎用トーン。t0省略時は即時
+  function tone(f0, f1, dur, type, vol, delay, b, t0) {
+    if (!ac) return;
+    type = type || 'square'; vol = vol || 0.12; delay = delay || 0;
+    const at = (t0 != null ? t0 : ac.currentTime) + delay;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(Math.max(1, f0), at);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), at + dur);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(bus(b));
+    o.start(at); o.stop(at + dur + 0.05);
+  }
+  function noise(dur, vol, delay, b) {
+    if (!ac) return;
+    dur = dur || 0.2; vol = vol || 0.15; delay = delay || 0;
+    const at = ac.currentTime + delay;
+    const n = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, n, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(g); g.connect(bus(b));
+    s.start(at);
+  }
+
+  /* -- BGM用ドラム(絶対時刻指定) -- */
+  function kick(t, v) {
+    if (!ac) return;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    g.gain.setValueAtTime(v, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+    o.connect(g); g.connect(bgmG);
+    o.start(t); o.stop(t + 0.16);
+  }
+  function hat(t, v) {
+    if (!ac || !hatBuf) return;
+    const s = ac.createBufferSource(); s.buffer = hatBuf;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 6500;
+    const g = ac.createGain(); g.gain.value = v;
+    s.connect(hp); hp.connect(g); g.connect(bgmG);
+    s.start(t);
+  }
+  function snare(t, v) {
+    if (!ac || !hatBuf) return;
+    const s = ac.createBufferSource(); s.buffer = hatBuf;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(v, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    s.connect(bp); bp.connect(g); g.connect(bgmG);
+    s.start(t);
+    tone(190, 120, 0.07, 'triangle', v * 0.7, 0, 'bgm', t);
+  }
+  // BGMメロディ音(絶対時刻)
+  function note(freq, t, dur, wave, vol) {
+    if (!ac) return;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = wave;
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.012);
+    g.gain.setValueAtTime(vol, Math.max(t + 0.012, t + dur - 0.03));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(bgmG);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+
+  /* -- 描画中のハム音(軌跡が伸びるほど音程が上がる) -- */
+  function startDraw(slow) {
+    if (!ac) return;
+    stopDraw();
+    hum = ac.createOscillator();
+    const g = ac.createGain();
+    hum.type = 'triangle';
+    hum.frequency.value = slow ? 110 : 170;
+    g.gain.value = 0.05;
+    hum.connect(g); g.connect(sfxG);
+    hum.start();
+  }
+  function updateDraw(len, slow) {
+    if (hum) hum.frequency.value = (slow ? 110 : 170) + Math.min(500, len) * 1.2;
+  }
+  function stopDraw() {
+    if (hum) { try { hum.stop(); } catch (e) {} hum.disconnect(); hum = null; }
+  }
+
+  const SCALE = [0, 3, 5, 7, 10, 12, 15, 17]; // ペンタトニック風
+  return {
+    ensure, applyVols, toggleMute, stopDraw, startDraw, updateDraw,
+    note, kick, hat, snare,
+    get ac() { return ac; },
+    claim(cells, slow) {
+      const n = 3 + Math.min(4, Math.floor(cells / 400));
+      const base = slow ? 392 : 330;
+      for (let i = 0; i < n; i++)
+        tone(base * Math.pow(2, SCALE[i] / 12), 0, 0.1, 'square', 0.11, i * 0.055);
+    },
+    death()  { tone(500, 60, 0.5, 'sawtooth', 0.18); noise(0.35, 0.18); },
+    clear_() { [523,659,784,1046,1318].forEach((f,i)=>tone(f,0,0.16,'square',0.13,i*0.11)); },
+    split()  { [440,554,659,880,1108,1318].forEach((f,i)=>tone(f,0,0.14,'sawtooth',0.10,i*0.06)); noise(0.25,0.12,0.05); },
+    over()   { [330,262,196,131].forEach((f,i)=>tone(f,0,0.3,'triangle',0.15,i*0.24)); },
+    extend() { [784,988,1175,1568].forEach((f,i)=>tone(f,0,0.09,'square',0.13,i*0.07)); },
+    sparx()  { tone(1400, 900, 0.12, 'square', 0.09); },
+    fuseCr() { noise(0.03, 0.07); },
+    ready()  { tone(440, 0, 0.10, 'square', 0.11); tone(660, 0, 0.14, 'square', 0.11, 0.18); },
+    blip()   { tone(880, 0, 0.05, 'square', 0.07); },
+    select() { tone(660, 990, 0.09, 'square', 0.10); },
+  };
+})();
+
+/* ---------------- BGMシーケンサ(先読みスケジューリング) ---------------- */
+const Bgm = (() => {
+  let song = null, name = null, want = null;
+  let step = 0, nextT = 0, timer = null;
+
+  function intensity() {
+    if (song && song.fixed != null) return song.fixed;
+    if (state !== 'play') return 0;
+    const p = percent();
+    let i = 0;
+    if (p >= 22 || sparxes.length >= 3) i = 1;
+    if (p >= 45) i = 2;
+    if (p >= 62 || lives <= 1) i = 3;
+    return i;
+  }
+  function bpmNow(inten) { return song.bpm * (inten >= 3 ? 1.07 : 1); }
+
+  function scheduleStep(st, t, inten, stepDur) {
+    for (const tr of song.tracks) {
+      if (tr.l > inten) continue;
+      if (tr.t === 'n') {
+        const nm = tr.s[st % tr.s.length];
+        if (nm) Snd.note(hz(nm), t, Math.max(0.03, stepDur * tr.g), tr.w, tr.v);
+      } else if (tr.t === 'kick')  { if (tr.set.has(st)) Snd.kick(t, tr.v); }
+        else if (tr.t === 'hat')   { if (tr.set.has(st)) Snd.hat(t, tr.v); }
+        else if (tr.t === 'snare') { if (tr.set.has(st)) Snd.snare(t, tr.v); }
+    }
+  }
+  function tick() {
+    if (!Snd.ac || !song) return;
+    const ahead = Snd.ac.currentTime + 0.18;
+    while (nextT < ahead) {
+      const inten = intensity();
+      const sd = 60 / bpmNow(inten) / 4; // 16分音符の長さ
+      scheduleStep(step, nextT, inten, sd);
+      nextT += sd;
+      step = (step + 1) % song.len;
+    }
+  }
+  function startTimer() {
+    if (timer == null) timer = setInterval(tick, 30);
+  }
+  return {
+    // 曲名を指定して再生開始(AudioContext未生成なら予約だけ)
+    play(n) {
+      want = n;
+      if (!Snd.ac) return;
+      if (!(n in BGMDATA)) return;
+      song = BGMDATA[n]; name = n;
+      for (const tr of song.tracks) if (tr.p && !tr.set) tr.set = new Set(tr.p);
+      step = 0;
+      nextT = Snd.ac.currentTime + 0.08;
+      startTimer();
+      tick();
+    },
+    pause() { if (timer != null) { clearInterval(timer); timer = null; } },
+    resume() {
+      if (!Snd.ac || !song) return;
+      nextT = Snd.ac.currentTime + 0.06;
+      startTimer();
+    },
+    stop() { this.pause(); song = null; name = null; want = null; },
+    onAudioReady() { if (want && !song) this.play(want); },
+    get playing() { return name; },
+    get want() { return want; },
+  };
+})();
+
+/* ---------------- 入力 ---------------- */
+const held = { up:false, down:false, left:false, right:false, fast:false, slow:false };
+const dirOrder = []; // 後から押した方向を優先
+function pressDir(d)   { if (!held[d]) { held[d] = true; dirOrder.unshift(d); } }
+function releaseDir(d) { held[d] = false; const i = dirOrder.indexOf(d); if (i >= 0) dirOrder.splice(i, 1); }
+function currentDir()  { for (const d of dirOrder) if (held[d]) return d; return null; }
+
+/* ---------------- ゲーム状態 ---------------- */
+let grid, colA;                 // セル状態 / 占領色インデックス(1..8)
+let claimed = 0, initOpen = 1;  // 占領セル数 / 初期空きセル数
+let level = 1, score = 0, hiScore = store.get('qlaim.hi', 0) | 0;
+let lives = settings.lives;
+let nextExtend = CONFIG.EXTEND_FIRST;
+let state = 'title', stTimer = 0, blinkT = 0;
+let deathTimer = 0, lastBonus = 0, wasSplit = false;
+let shakeT = 0;                 // 画面揺れの残り時間
+let pausedFrom = 'play';        // ポーズ前の状態(ready/play)
+let optSel = 0;                 // OPTIONS選択行
+
+const player = { x:0, y:0, acc:0, drawing:false, usedFast:false, invuln:0 };
+let trail = [], trailStart = null;
+const fuse = { wait:0, pos:0, lit:false, sndT:0 };
+let qixes = [];
+let sparxes = [], sparxTimer = 0;
+let particles = [], floats = [];
+
+// テーマ由来の実行時パレット(applyThemeで再計算)
+let themePal = [], themePalD = [];
+
+function setState(s) { state = s; stTimer = 0; }
+function percent()   { return claimed / initOpen * 100; }
+
+/* ---------------- テーマ適用 ---------------- */
+function applyTheme() {
+  const t = theme();
+  themePal = t.fast.concat(t.slow);
+  themePalD = themePal.map(c => shade(c, 0.80)); // ディザ用の暗色
+  try {
+    document.body.style.background =
+      `radial-gradient(ellipse at 50% 30%, ${t.bgOuter} 0%, ${t.bg} 70%)`;
+  } catch (e) {}
+  if (grid) redrawField();
+}
+function applyCrt() {
+  try { document.body.classList.toggle('crt', !!settings.crt); } catch (e) {}
+}
+
+/* ---------------- フィールド ---------------- */
+function isBoundary(x, y) {
+  if (grid[idx(x, y)] !== WALL) return false;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+    if (grid[idx(nx, ny)] === OPEN) return true;
+  }
+  return false;
+}
+
+function blockedCell(fx, fy) {
+  const cx = Math.floor(fx), cy = Math.floor(fy);
+  if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) return true;
+  return grid[idx(cx, cy)] !== OPEN;
+}
+
+function makeQix(x, y, spd, hue) {
+  return { x, y, head: Math.random() * Math.PI * 2, arm: rand(0, 6),
+           hue, segs: [], segT: 0, spd };
+}
+
+function initLevel(lv) {
+  grid = new Uint8Array(GW * GH);
+  colA = new Uint8Array(GW * GH);
+  for (let x = 0; x < GW; x++) { grid[idx(x, 0)] = WALL; grid[idx(x, GH - 1)] = WALL; }
+  for (let y = 0; y < GH; y++) { grid[idx(0, y)] = WALL; grid[idx(GW - 1, y)] = WALL; }
+  initOpen = (GW - 2) * (GH - 2);
+  claimed = 0;
+
+  player.x = GW >> 1; player.y = GH - 1;
+  player.acc = 0; player.drawing = false; player.usedFast = false; player.invuln = 0;
+  trail = []; trailStart = null;
+  fuseReset();
+
+  const spd = CONFIG.QIX_SPEED * diff().qix * Math.pow(CONFIG.QIX_ACCEL, lv - 1);
+  qixes = [];
+  const nq = lv >= CONFIG.TWO_QIX_FROM ? 2 : 1;
+  for (let k = 0; k < nq; k++) {
+    qixes.push(makeQix(GW * (nq === 1 ? 0.5 : k ? 0.68 : 0.32), GH * 0.35,
+                       spd, rand(0, 360)));
+  }
+
+  sparxes = [];
+  const ns = Math.min(4, CONFIG.SPARX_START + ((lv - 1) >> 1));
+  for (let i = 0; i < ns; i++) spawnSparx(i % 2 ? 1 : -1);
+  sparxTimer = CONFIG.SPARX_INTERVAL * diff().interval;
+
+  particles = []; floats = [];
+  deathTimer = 0; wasSplit = false; shakeT = 0;
+  redrawField();
+}
+
+// 占領済みレイヤーをオフスクリーンへ焼き込む(市松ディザで質感を出す)
+function redrawField() {
+  const t = theme();
+  fctx.fillStyle = t.field;
+  fctx.fillRect(0, 0, fieldC.width, fieldC.height);
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      const i = idx(x, y);
+      if (grid[i] === WALL) {
+        const c = colA[i];
+        fctx.fillStyle = c ? ((x + y) & 1 ? themePalD[c - 1] : themePal[c - 1]) : t.line;
+        fctx.fillRect(x * CS, y * CS, CS, CS);
+      }
+    }
+  }
+}
+
+// クリア時: 残った空き地を薄く塗って「封鎖」感を出す(判定には影響しない)
+function sealRemaining() {
+  const c = shade(theme().accent, 0.28);
+  fctx.fillStyle = c;
+  for (let y = 0; y < GH; y++)
+    for (let x = 0; x < GW; x++)
+      if (grid[idx(x, y)] === OPEN) fctx.fillRect(x * CS, y * CS, CS, CS);
+}
+
+function qixCell(q) {
+  return idx(clamp(Math.floor(q.x), 1, GW - 2), clamp(Math.floor(q.y), 1, GH - 2));
+}
+
+// startIdx を含む連結空き地を訪問済みにして返す
+function visitedFrom(startIdx) {
+  const visited = new Uint8Array(GW * GH);
+  if (grid[startIdx] !== OPEN) return visited;
+  const q = new Int32Array(GW * GH);
+  let h = 0, t = 0;
+  q[t++] = startIdx; visited[startIdx] = 1;
+  while (h < t) {
+    const i = q[h++];
+    const x = i % GW, y = (i / GW) | 0;
+    for (const [dx, dy] of DIRS4) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const j = idx(nx, ny);
+      if (!visited[j] && grid[j] === OPEN) { visited[j] = 1; q[t++] = j; }
+    }
+  }
+  return visited;
+}
+
+// QIX(先頭)のいる連結領域を残し、それ以外の空き地を占領する
+function claimFill(palNo) {
+  let start = qixCell(qixes[0]);
+  if (grid[start] !== OPEN) {
+    // 安全策: QIX近傍から空きセルを探す
+    const sx = start % GW, sy = (start / GW) | 0;
+    outer:
+    for (let r = 1; r <= 8; r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const nx = sx + dx, ny = sy + dy;
+        if (nx < 1 || ny < 1 || nx >= GW - 1 || ny >= GH - 1) continue;
+        if (grid[idx(nx, ny)] === OPEN) { start = idx(nx, ny); break outer; }
+      }
+    }
+  }
+  if (grid[start] !== OPEN) {
+    // 最終安全策: どこか1つ空きセルを採用(全部塗り事故の防止)
+    for (let i = 0; i < GW * GH; i++) if (grid[i] === OPEN) { start = i; break; }
+  }
+  const visited = visitedFrom(start);
+  let gained = 0;
+  for (let i = 0; i < GW * GH; i++) {
+    if (grid[i] === OPEN && !visited[i]) { grid[i] = WALL; colA[i] = palNo; gained++; }
+  }
+  return gained;
+}
+
+// 占領後などに、プレイヤーが線上(境界)から外れていたら最寄りの境界へ寄せる
+function snapPlayerToBoundary() {
+  if (isBoundary(player.x, player.y)) return;
+  const visited = new Uint8Array(GW * GH);
+  const q = [{ x: player.x, y: player.y }];
+  visited[idx(player.x, player.y)] = 1;
+  while (q.length) {
+    const c = q.shift();
+    if (isBoundary(c.x, c.y)) { player.x = c.x; player.y = c.y; return; }
+    for (const [dx, dy] of DIRS4) {
+      const nx = c.x + dx, ny = c.y + dy;
+      if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const j = idx(nx, ny);
+      if (!visited[j] && grid[j] === WALL) { visited[j] = 1; q.push({ x: nx, y: ny }); }
+    }
+  }
+}
+
+/* ---------------- プレイヤー ---------------- */
+function playerStep(dx, dy) {
+  const nx = player.x + dx, ny = player.y + dy;
+  if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) return false;
+  const v = grid[idx(nx, ny)];
+
+  if (!player.drawing) {
+    if (v === WALL && isBoundary(nx, ny)) { player.x = nx; player.y = ny; return true; }
+    if (v === OPEN && (held.fast || held.slow)) {
+      // 描画開始
+      player.drawing = true;
+      player.usedFast = false;
+      trailStart = { x: player.x, y: player.y };
+      trail = [];
+      fuseReset();
+      Snd.startDraw(!held.fast && held.slow);
+      enterTrail(nx, ny);
+      return true;
+    }
+    return false;
+  } else {
+    if (v === OPEN)  { enterTrail(nx, ny); return true; }
+    if (v === WALL)  { player.x = nx; player.y = ny; closeTrail(); return true; }
+    return false; // 自分の軌跡には入れない
+  }
+}
+
+function enterTrail(nx, ny) {
+  grid[idx(nx, ny)] = TRAIL;
+  trail.push({ x: nx, y: ny });
+  player.x = nx; player.y = ny;
+  if (held.fast) player.usedFast = true;
+  Snd.updateDraw(trail.length, !held.fast && held.slow);
+}
+
+function closeTrail() {
+  Snd.stopDraw();
+  const slow = !player.usedFast;
+  const palNo = (slow ? 4 : 0) + 1 + ((Math.random() * 4) | 0); // 1..4=FAST色, 5..8=SLOW色
+
+  // 軌跡を壁化(線のセルも空き地から奪った領域として計上する)
+  for (const c of trail) { const i = idx(c.x, c.y); grid[i] = WALL; colA[i] = 0; }
+
+  // ---- QIX分断チェック(2体時): 別領域に分かれたら即クリア ----
+  if (qixes.length > 1) {
+    const seen = visitedFrom(qixCell(qixes[0]));
+    const crushed = qixes.filter((q, i) => i > 0 && !seen[qixCell(q)]);
+    if (crushed.length) {
+      let gained = trail.length;
+      for (let i = 0; i < GW * GH; i++) {
+        if (grid[i] === OPEN && !seen[i]) { grid[i] = WALL; colA[i] = palNo; gained++; }
+      }
+      claimed += gained;
+      score += gained * (slow ? 2 : 1);
+      for (const q of crushed) {
+        spawnParticles(q.x * CS, FIELD_Y + q.y * CS, 42, theme().accent);
+        qixes.splice(qixes.indexOf(q), 1);
+      }
+      floats.push({ x: W / 2, y: H * 0.4, txt: 'QIX SPLIT!!', t: 2.0, col: theme().accent, big: true });
+      trail = [];
+      player.drawing = false;
+      fuseReset();
+      redrawField();
+      snapPlayerToBoundary();
+      shakeT = 0.4;
+      Snd.split();
+      startClear(true);
+      return;
+    }
+  }
+
+  const gained = claimFill(palNo) + trail.length;
+  claimed += gained;
+
+  if (gained > 0) {
+    const pts = gained * (slow ? 2 : 1);
+    score += pts;
+    checkExtend();
+    floats.push({
+      x: player.x * CS, y: FIELD_Y + player.y * CS,
+      txt: '+' + pts + (slow ? ' x2' : ''), t: 1.2,
+      col: slow ? theme().trailS : theme().trailF,
+    });
+    for (let i = 0; i < trail.length; i += 6) {
+      const c = trail[i];
+      spawnParticles(c.x * CS + CS / 2, FIELD_Y + c.y * CS + CS / 2, 2, slow ? theme().trailS : theme().trailF);
+    }
+    Snd.claim(gained, slow);
+  }
+
+  trail = [];
+  player.drawing = false;
+  fuseReset();
+  redrawField();
+  snapPlayerToBoundary();
+
+  if (percent() >= CONFIG.TARGET) startClear(false);
+}
+
+function checkExtend() {
+  while (score >= nextExtend) {
+    lives++;
+    nextExtend += CONFIG.EXTEND_EVERY;
+    floats.push({ x: W / 2, y: H / 2, txt: 'EXTEND!', t: 1.6, col: '#8dff9e', big: true });
+    Snd.extend();
+  }
+}
+
+/* ---------------- 導火線 ---------------- */
+function fuseReset() { fuse.wait = 0; fuse.pos = 0; fuse.lit = false; fuse.sndT = 0; }
+function effFuseDelay() { return CONFIG.FUSE_DELAY * diff().fuse; }
+
+function updateFuse(dt, stepped) {
+  if (!player.drawing || trail.length === 0) return;
+  if (stepped) { fuse.wait = 0; return; } // 動いている間は進まない(点火状態は維持)
+  fuse.wait += dt;
+  if (fuse.wait >= effFuseDelay()) {
+    fuse.lit = true;
+    fuse.pos += CONFIG.FUSE_SPEED * dt;
+    fuse.sndT -= dt;
+    if (fuse.sndT <= 0) { Snd.fuseCr(); fuse.sndT = 0.07; }
+    if (fuse.pos >= trail.length) death();
+  }
+}
+
+/* ---------------- QIX ---------------- */
+function updateQix(q, dt) {
+  q.head += (Math.random() - 0.5) * 4 * dt;
+  let dist = q.spd * dt;
+  while (dist > 0) { // 高速時のすり抜け防止のためサブステップ
+    const step = Math.min(0.4, dist);
+    dist -= step;
+    const nx = q.x + Math.cos(q.head) * step;
+    const ny = q.y + Math.sin(q.head) * step;
+    let bounced = false;
+    if (blockedCell(nx, q.y)) { q.head = Math.PI - q.head; bounced = true; }
+    if (blockedCell(q.x, ny)) { q.head = -q.head; bounced = true; }
+    if (!bounced) {
+      if (blockedCell(nx, ny)) { q.head += Math.PI; }
+      else { q.x = nx; q.y = ny; }
+    }
+  }
+  q.arm += 3.4 * dt;
+  q.hue = (q.hue + 140 * dt) % 360;
+  q.segT -= dt;
+  if (q.segT <= 0) {
+    q.segT = 0.033;
+    const L = CONFIG.QIX_ARM * (0.65 + 0.35 * Math.sin(q.arm * 1.618));
+    const a = q.arm;
+    q.segs.push({
+      x1: q.x + Math.cos(a) * L, y1: q.y + Math.sin(a) * L,
+      x2: q.x - Math.cos(a) * L, y2: q.y - Math.sin(a) * L,
+      h: q.hue,
+    });
+    if (q.segs.length > 15) q.segs.shift();
+  }
+  // 当たり判定: 最新セグメント上をサンプリング
+  if (!q.segs.length) return;
+  const sg = q.segs[q.segs.length - 1];
+  for (let t = 0; t <= 1.0001; t += 0.1) {
+    const cx = Math.floor(sg.x1 + (sg.x2 - sg.x1) * t);
+    const cy = Math.floor(sg.y1 + (sg.y2 - sg.y1) * t);
+    if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue;
+    const v = grid[idx(cx, cy)];
+    if (v === TRAIL) { death(); return; }
+    if (player.drawing && cx === player.x && cy === player.y) { death(); return; }
+  }
+}
+function updateQixes(dt) {
+  for (const q of qixes) {
+    updateQix(q, dt);
+    if (deathTimer > 0) return;
+  }
+}
+
+/* ---------------- SPARX ---------------- */
+function spawnSparx(dir) {
+  sparxes.push({ x: GW >> 1, y: 0, px: -9, py: -9, dx: dir, dy: 0, acc: rand(0, 0.8) });
+}
+
+function stepSparx(s) {
+  const cands = [];
+  for (const [dx, dy] of DIRS4) {
+    const nx = s.x + dx, ny = s.y + dy;
+    if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+    if (grid[idx(nx, ny)] === WALL && isBoundary(nx, ny)) cands.push({ nx, ny, dx, dy });
+  }
+  if (!cands.length) { // 占領で孤立 → 上部から再出現
+    s.x = GW >> 1; s.y = 0; s.px = -9; s.py = -9;
+    return;
+  }
+  let opts = cands.filter(c => !(c.nx === s.px && c.ny === s.py));
+  if (!opts.length) opts = cands;
+  const p = opts.find(c => c.dx === s.dx && c.dy === s.dy) || pick(opts);
+  s.px = s.x; s.py = s.y;
+  s.x = p.nx; s.y = p.ny; s.dx = p.dx; s.dy = p.dy;
+}
+
+function updateSparxes(dt) {
+  sparxTimer -= dt;
+  if (sparxTimer <= 0 && sparxes.length < CONFIG.SPARX_MAX) {
+    spawnSparx(Math.random() < 0.5 ? 1 : -1);
+    Snd.sparx();
+    floats.push({ x: W / 2, y: FIELD_Y + 20, txt: 'SPARX!', t: 1.0, col: '#ffe25c' });
+    sparxTimer = CONFIG.SPARX_INTERVAL * diff().interval;
+  }
+  const spd = CONFIG.SPARX_SPEED * diff().sparx;
+  for (const s of sparxes) {
+    s.acc += dt * spd;
+    while (s.acc >= 1) {
+      s.acc -= 1;
+      stepSparx(s);
+      if (s.x === player.x && s.y === player.y && player.invuln <= 0) { death(); return; }
+    }
+    if (s.x === player.x && s.y === player.y && player.invuln <= 0) { death(); return; }
+  }
+}
+
+/* ---------------- ミス処理 ---------------- */
+function death() {
+  if (player.invuln > 0 || deathTimer > 0) return;
+  deathTimer = 1.2;
+  shakeT = 0.35;
+  Snd.stopDraw();
+  Snd.death();
+  spawnParticles(player.x * CS + CS / 2, FIELD_Y + player.y * CS + CS / 2, 30, '#ff5c8a');
+}
+
+function applyDeath() {
+  lives--;
+  for (const c of trail) grid[idx(c.x, c.y)] = OPEN; // 軌跡は消える
+  trail = [];
+  player.drawing = false;
+  fuseReset();
+  if (trailStart) { player.x = trailStart.x; player.y = trailStart.y; }
+  snapPlayerToBoundary();
+  if (lives < 0) {
+    if (score > hiScore) { hiScore = score; store.set('qlaim.hi', hiScore); }
+    setState('over');
+    Bgm.stop();
+    Snd.over();
+  } else {
+    player.invuln = CONFIG.INVULN;
+  }
+}
+
+/* ---------------- 進行 ---------------- */
+function startGame() {
+  score = 0;
+  lives = settings.lives;
+  level = 1;
+  nextExtend = CONFIG.EXTEND_FIRST;
+  initLevel(1);
+  setState('ready');
+  Bgm.play('play');
+  Snd.ready();
+}
+
+function startClear(split) {
+  wasSplit = !!split;
+  lastBonus = Math.max(0, Math.round((percent() - CONFIG.TARGET) * 150))
+            + level * 500
+            + (split ? CONFIG.SPLIT_BONUS + (level - 1) * CONFIG.SPLIT_BONUS_LV : 0);
+  score += lastBonus;
+  checkExtend();
+  if (score > hiScore) { hiScore = score; store.set('qlaim.hi', hiScore); }
+  Snd.stopDraw();
+  Bgm.stop();
+  if (!split) Snd.clear_();
+  sealRemaining();
+  setState('clear');
+}
+
+function nextLevel() {
+  level++;
+  initLevel(level);
+  setState('ready');
+  Bgm.play('play');
+  Snd.ready();
+}
+
+function backToTitle() {
+  initLevel(1);
+  setState('title');
+  Bgm.play('title');
+}
+
+function openOptions() { optSel = 0; setState('options'); Snd.select(); }
+function closeOptions() { saveSettings(); setState('title'); Snd.select(); }
+
+function onAction() {
+  if (state === 'title') startGame();
+  else if (state === 'clear' && stTimer > 0.8) nextLevel();
+  else if (state === 'over'  && stTimer > 0.8) backToTitle();
+}
+
+function doPause() {
+  if (state !== 'play' && state !== 'ready') return;
+  pausedFrom = state;
+  Snd.stopDraw();
+  Bgm.pause();
+  setState('pause');
+}
+function doResume() {
+  setState(pausedFrom || 'play');
+  Bgm.resume();
+  if (player.drawing) Snd.startDraw(!player.usedFast);
+}
+function togglePause() {
+  if (state === 'pause') doResume();
+  else doPause();
+}
+
+/* ---------------- OPTIONS ---------------- */
+const OPT_ITEMS = [
+  { k:'bgm',   label:'BGM音量',  min:0, max:10 },
+  { k:'sfx',   label:'効果音量', min:0, max:10 },
+  { k:'diff',  label:'難易度',   vals:DIFF_KEYS },
+  { k:'lives', label:'残機',     min:1, max:5 },
+  { k:'theme', label:'テーマ',   vals:THEMES.map(t => t.name) },
+  { k:'crt',   label:'CRT効果',  vals:['OFF','ON'], bool:true },
+  { k:'_back', label:'もどる' },
+];
+
+function adjustOpt(dir) {
+  const it = OPT_ITEMS[optSel];
+  if (!it || it.k === '_back') return;
+  if (it.bool) {
+    settings[it.k] = !settings[it.k];
+    if (it.k === 'crt') applyCrt();
+  } else if (it.vals) {
+    let i = it.k === 'diff' ? it.vals.indexOf(settings.diff) : settings[it.k] | 0;
+    i = (i + dir + it.vals.length) % it.vals.length;
+    if (it.k === 'diff') settings.diff = it.vals[i];
+    else settings[it.k] = i;
+    if (it.k === 'theme') applyTheme();
+  } else {
+    settings[it.k] = clamp((settings[it.k] | 0) + dir, it.min, it.max);
+  }
+  Snd.applyVols();
+  Snd.blip();
+  saveSettings();
+}
+
+/* ---------------- パーティクル・フロート文字 ---------------- */
+function spawnParticles(px, py, n, col) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, Math.PI * 2), sp = rand(25, 120);
+    particles.push({ x: px, y: py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: rand(0.3, 0.9), col });
+  }
+}
+function updateParticles(dt) {
+  for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 50 * dt; p.t -= dt; }
+  particles = particles.filter(p => p.t > 0);
+}
+function updateFloats(dt) {
+  for (const f of floats) { f.y -= 20 * dt; f.t -= dt; }
+  floats = floats.filter(f => f.t > 0);
+}
+
+/* ---------------- 更新 ---------------- */
+function update(dt) {
+  if (deathTimer > 0) {
+    deathTimer -= dt;
+    updateParticles(dt); updateFloats(dt);
+    if (deathTimer <= 0) applyDeath();
+    return;
+  }
+  if (player.invuln > 0) player.invuln -= dt;
+
+  // プレイヤー移動(描画中は描画ボタンを押している間だけ進める)
+  const d = currentDir();
+  let spd = player.drawing
+    ? (held.fast ? CONFIG.DRAW_FAST : held.slow ? CONFIG.DRAW_SLOW : 0)
+    : CONFIG.PLAYER_SPEED;
+  let stepped = false;
+  if (d && spd > 0) {
+    const [dx, dy] = DIRV[d];
+    player.acc += dt * spd;
+    while (player.acc >= 1) {
+      player.acc -= 1;
+      if (playerStep(dx, dy)) stepped = true;
+      else { player.acc = 0; break; }
+      if (state !== 'play' || deathTimer > 0) break; // クリア/ミス発生時は中断
+    }
+  } else {
+    player.acc = 0;
+  }
+  if (state !== 'play') return;
+
+  updateFuse(dt, stepped);
+  if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
+
+  updateQixes(dt);
+  if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
+
+  updateSparxes(dt);
+  updateParticles(dt);
+  updateFloats(dt);
+}
+
+// 状態遷移などフレーム毎の付随処理(ヘッドレステスト可能なよう分離)
+function tickMeta(dt) {
+  if (shakeT > 0) shakeT -= dt;
+  if (state === 'ready' && stTimer >= CONFIG.READY_TIME) setState('play');
+}
+
+/* ---------------- 描画 ---------------- */
+// テーマに応じたQIXの線色(hueは0..360で回転している)
+function qixStroke(h, light, alpha) {
+  const t = theme();
+  if (t.qixSat0) return `hsla(0, 0%, ${light + 15}%, ${alpha})`;
+  if (t.qixHue) h = t.qixHue[0] + (h / 360) * (t.qixHue[1] - t.qixHue[0]);
+  return `hsla(${h}, 95%, ${light}%, ${alpha})`;
+}
+
+// ポインタ用ヒット領域(描画時に更新)
+let optRects = [], titleOptRect = null, pauseRect = { x: W - 42, y: 6, w: 36, h: 36 };
+
+function render() {
+  const t = theme();
+  ctx.save();
+  if (shakeT > 0) {
+    const a = shakeT * 9;
+    ctx.translate(rand(-a, a), rand(-a, a));
+  }
+
+  ctx.fillStyle = t.field;
+  ctx.fillRect(-8, -8, W + 16, H + 16);
+  ctx.drawImage(fieldC, 0, FIELD_Y);
+
+  // 軌跡
+  if (trail.length) {
+    const pulse = 0.75 + 0.25 * Math.sin(blinkT * 12);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = player.usedFast ? t.trailF : t.trailS;
+    for (const c of trail) ctx.fillRect(c.x * CS, FIELD_Y + c.y * CS, CS, CS);
+    ctx.globalAlpha = 1;
+  }
+
+  // 導火線
+  if (fuse.lit && player.drawing && trail.length) {
+    const i = Math.min(Math.floor(fuse.pos), trail.length - 1);
+    const c = trail[i];
+    const px = c.x * CS + CS / 2, py = FIELD_Y + c.y * CS + CS / 2;
+    ctx.fillStyle = pick(['#ffdd55', '#ff7733', '#ff3311']);
+    const r = rand(3, 5);
+    ctx.fillRect(px - r / 2, py - r / 2, r, r);
+    ctx.fillStyle = '#ffdd55';
+    ctx.fillRect(px + rand(-5, 5), py + rand(-5, 5), 2, 2);
+  }
+
+  // SPARX
+  for (const s of sparxes) {
+    const px = s.x * CS + CS / 2, py = FIELD_Y + s.y * CS + CS / 2;
+    const flick = (Math.sin(blinkT * 30 + s.x) > 0);
+    ctx.strokeStyle = flick ? '#ffe25c' : '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px - 5, py); ctx.lineTo(px + 5, py);
+    ctx.moveTo(px, py - 5); ctx.lineTo(px, py + 5);
+    if (flick) { ctx.moveTo(px - 4, py - 4); ctx.lineTo(px + 4, py + 4); ctx.moveTo(px + 4, py - 4); ctx.lineTo(px - 4, py + 4); }
+    ctx.stroke();
+    ctx.fillStyle = '#fff7c0';
+    ctx.fillRect(px - 2, py - 2, 4, 4);
+  }
+
+  // プレイヤー(無敵中は点滅)
+  const blinkOff = player.invuln > 0 && (Math.floor(blinkT * 10) % 2 === 0);
+  if (deathTimer <= 0 && !blinkOff) {
+    const px = player.x * CS + CS / 2, py = FIELD_Y + player.y * CS + CS / 2;
+    ctx.shadowColor = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : t.accent;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(px, py - 6); ctx.lineTo(px + 6, py); ctx.lineTo(px, py + 6); ctx.lineTo(px - 6, py);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : '#ff3b6b';
+    ctx.beginPath();
+    ctx.moveTo(px, py - 3); ctx.lineTo(px + 3, py); ctx.lineTo(px, py + 3); ctx.lineTo(px - 3, py);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // QIX(フィールド内にクリップ)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, FIELD_Y, W, H - FIELD_Y);
+  ctx.clip();
+  for (const q of qixes) {
+    for (let i = 0; i < q.segs.length; i++) {
+      const s = q.segs[i];
+      const al = (i + 1) / q.segs.length;
+      const last = i === q.segs.length - 1;
+      ctx.strokeStyle = qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
+      ctx.lineWidth = last ? 3 : 2;
+      if (last) { ctx.shadowColor = qixStroke(s.h, 60, 0.9); ctx.shadowBlur = 8; }
+      ctx.beginPath();
+      ctx.moveTo(s.x1 * CS, FIELD_Y + s.y1 * CS);
+      ctx.lineTo(s.x2 * CS, FIELD_Y + s.y2 * CS);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+  }
+  ctx.restore();
+
+  // パーティクル
+  for (const p of particles) {
+    ctx.globalAlpha = Math.min(1, p.t * 2);
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  // ビネット(CRT効果ON時)
+  if (settings.crt) ctx.drawImage(vigC, 0, FIELD_Y);
+
+  // フロート文字
+  ctx.textAlign = 'center';
+  for (const f of floats) {
+    ctx.globalAlpha = Math.min(1, f.t);
+    ctx.fillStyle = f.col;
+    ctx.font = (f.big ? "bold 24px" : "bold 14px") + " 'Courier New', monospace";
+    ctx.fillText(f.txt, clamp(f.x, 40, W - 40), clamp(f.y, FIELD_Y + 16, H - 8));
+  }
+  ctx.globalAlpha = 1;
+
+  renderHUD();
+  renderOverlay();
+  ctx.restore();
+}
+
+function renderHUD() {
+  const t = theme();
+  ctx.fillStyle = t.hud;
+  ctx.fillRect(0, 0, W, FIELD_Y);
+  ctx.fillStyle = shade(t.accent, 0.35);
+  ctx.fillRect(0, FIELD_Y - 2, W, 2);
+
+  // 左: スコア
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#8fa3d9';
+  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.fillText('SCORE', 10, 16);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = "bold 17px 'Courier New', monospace";
+  ctx.fillText(String(score).padStart(7, '0'), 10, 34);
+  ctx.fillStyle = '#6d7ba8';
+  ctx.font = "bold 11px 'Courier New', monospace";
+  ctx.fillText('HI ' + String(Math.max(hiScore, score)).padStart(7, '0'), 10, 50);
+
+  // 中央: 占領率
+  const pct = percent();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = pct >= CONFIG.TARGET ? '#7bffa0' : '#ffd76b';
+  ctx.font = "bold 19px 'Courier New', monospace";
+  ctx.fillText(pct.toFixed(1) + '%', W / 2, 24);
+  // 進捗バー(目標位置に印)
+  const bw = 150, bx = W / 2 - bw / 2, by = 31;
+  ctx.fillStyle = '#1b2340';
+  ctx.fillRect(bx, by, bw, 8);
+  ctx.fillStyle = pct >= CONFIG.TARGET ? '#4be07f' : '#e0a83a';
+  ctx.fillRect(bx, by, bw * clamp(pct / 100, 0, 1), 8);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(bx + bw * CONFIG.TARGET / 100 - 1, by - 2, 2, 12);
+  ctx.fillStyle = '#6d7ba8';
+  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.fillText('TARGET ' + CONFIG.TARGET + '%', W / 2, 52);
+
+  // 右: エリア・残機・難易度・ポーズボタン
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#8fa3d9';
+  ctx.font = "bold 11px 'Courier New', monospace";
+  ctx.fillText('AREA ' + level, W - 52, 16);
+  for (let i = 0; i < Math.min(lives, 8); i++) {
+    const px = W - 58 - i * 13, py = 28;
+    ctx.fillStyle = '#ff3b6b';
+    ctx.beginPath();
+    ctx.moveTo(px, py - 5); ctx.lineTo(px + 5, py); ctx.lineTo(px, py + 5); ctx.lineTo(px - 5, py);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = '#6d7ba8';
+  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.fillText(settings.diff, W - 52, 50);
+
+  // ポーズボタン(タップ可)
+  if (state === 'play' || state === 'ready' || state === 'pause') {
+    ctx.fillStyle = 'rgba(60,80,140,.35)';
+    ctx.fillRect(pauseRect.x, pauseRect.y, pauseRect.w, pauseRect.h);
+    ctx.fillStyle = '#cdd8ff';
+    if (state === 'pause') {
+      ctx.beginPath();
+      ctx.moveTo(pauseRect.x + 12, pauseRect.y + 9);
+      ctx.lineTo(pauseRect.x + 27, pauseRect.y + 18);
+      ctx.lineTo(pauseRect.x + 12, pauseRect.y + 27);
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.fillRect(pauseRect.x + 11, pauseRect.y + 9, 5, 18);
+      ctx.fillRect(pauseRect.x + 21, pauseRect.y + 9, 5, 18);
+    }
+  }
+}
+
+function panel(x, y, w, h) {
+  ctx.fillStyle = 'rgba(4, 6, 16, 0.88)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = shade(theme().accent, 0.7);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+}
+
+function renderOverlay() {
+  const t = theme();
+  const blinkOn = Math.sin(blinkT * 5) > -0.2;
+  ctx.textAlign = 'center';
+
+  if ((state === 'play' || state === 'ready') && deathTimer > 0) {
+    if (blinkOn) {
+      ctx.fillStyle = '#ff5c8a';
+      ctx.font = "bold 34px 'Courier New', monospace";
+      ctx.fillText('MISS!', W / 2, H / 2);
+    }
+    return;
+  }
+
+  if (state === 'title') {
+    panel(56, 150, W - 112, 520);
+    ctx.fillStyle = t.accent;
+    ctx.font = "bold 58px 'Courier New', monospace";
+    ctx.fillText('QLAIM', W / 2 + 3, 250 + 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('QLAIM', W / 2, 250);
+    ctx.fillStyle = '#8fa3d9';
+    ctx.font = "bold 17px 'Courier New', monospace";
+    ctx.fillText('─ 陣取りアーケード ─', W / 2, 288);
+
+    ctx.font = "15px 'Courier New', monospace";
+    ctx.fillStyle = '#cdd8ff';
+    const lines = [
+      '↑↓←→ / WASD : 移動',
+      'Z or SPACE  : 速く引く (×1)',
+      'X or SHIFT  : 遅く引く (×2)',
+      '',
+      '線で囲んで 75% 占領でクリア',
+      'AREA 3 からは QIX 2体 ──',
+      '線で分断すれば 即クリア!',
+      'QIX・SPARX・導火線に注意',
+    ];
+    lines.forEach((s, i) => ctx.fillText(s, W / 2, 330 + i * 25));
+
+    if (blinkOn) {
+      ctx.fillStyle = '#ffd76b';
+      ctx.font = "bold 18px 'Courier New', monospace";
+      ctx.fillText('Z / SPACE / タップ でスタート', W / 2, 566);
+    }
+    // OPTIONS ボタン
+    titleOptRect = { x: W / 2 - 110, y: 588, w: 220, h: 38 };
+    ctx.strokeStyle = '#3a4a7a';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(titleOptRect.x, titleOptRect.y, titleOptRect.w, titleOptRect.h);
+    ctx.fillStyle = '#8fa3d9';
+    ctx.font = "bold 15px 'Courier New', monospace";
+    ctx.fillText('OPTIONS  [X / O]', W / 2, 613);
+
+    ctx.fillStyle = '#6d7ba8';
+    ctx.font = "bold 13px 'Courier New', monospace";
+    ctx.fillText('HI SCORE ' + String(hiScore).padStart(7, '0'), W / 2, 652);
+    return;
+  }
+
+  if (state === 'options') {
+    panel(60, 130, W - 120, 560);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = "bold 28px 'Courier New', monospace";
+    ctx.fillText('OPTIONS', W / 2, 182);
+
+    optRects = [];
+    const y0 = 240, dy = 58;
+    OPT_ITEMS.forEach((it, i) => {
+      const y = y0 + i * dy;
+      optRects.push({ x: 76, y: y - 30, w: W - 152, h: 46, idx: i });
+      const sel = i === optSel;
+      if (sel) {
+        ctx.fillStyle = 'rgba(90,120,220,.18)';
+        ctx.fillRect(76, y - 30, W - 152, 46);
+        ctx.fillStyle = t.accent;
+        ctx.font = "bold 17px 'Courier New', monospace";
+        ctx.textAlign = 'left';
+        ctx.fillText('▶', 88, y);
+      }
+      ctx.textAlign = 'left';
+      ctx.fillStyle = sel ? '#ffffff' : '#aab6dd';
+      ctx.font = "bold 17px 'Courier New', monospace";
+      ctx.fillText(it.label, 116, y);
+
+      ctx.textAlign = 'right';
+      if (it.k === '_back') {
+        // 値なし
+      } else if (it.min != null && it.max === 10) {
+        // 音量バー
+        const v = settings[it.k] | 0;
+        const bw2 = 130, bx2 = W - 96 - bw2, by2 = y - 12;
+        ctx.fillStyle = '#1b2340';
+        ctx.fillRect(bx2, by2, bw2, 10);
+        ctx.fillStyle = sel ? t.accent : '#5a6a9a';
+        ctx.fillRect(bx2, by2, bw2 * v / 10, 10);
+        ctx.fillStyle = sel ? '#ffffff' : '#aab6dd';
+        ctx.fillText(String(v), W - 84, y);
+      } else {
+        let vs;
+        if (it.bool) vs = settings[it.k] ? 'ON' : 'OFF';
+        else if (it.vals) vs = it.k === 'diff' ? settings.diff : it.vals[settings[it.k] | 0];
+        else vs = String(settings[it.k]);
+        ctx.fillStyle = sel ? '#ffffff' : '#aab6dd';
+        ctx.fillText('◀ ' + vs + ' ▶', W - 84, y);
+      }
+    });
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#6d7ba8';
+    ctx.font = "bold 13px 'Courier New', monospace";
+    ctx.fillText('↑↓ 選択 / ←→ 変更 / Z・ESC もどる', W / 2, 668);
+    return;
+  }
+
+  if (state === 'ready') {
+    if (deathTimer <= 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(0, FIELD_Y, W, H - FIELD_Y);
+      ctx.fillStyle = t.accent;
+      ctx.font = "bold 44px 'Courier New', monospace";
+      ctx.fillText('AREA ' + level, W / 2, H / 2 - 24);
+      if (blinkOn) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = "bold 22px 'Courier New', monospace";
+        ctx.fillText('READY', W / 2, H / 2 + 24);
+      }
+      if (qixes.length > 1) {
+        ctx.fillStyle = '#ffd76b';
+        ctx.font = "bold 15px 'Courier New', monospace";
+        ctx.fillText('QIX 2体 ─ 分断で即クリア!', W / 2, H / 2 + 64);
+      }
+    }
+    return;
+  }
+
+  if (state === 'pause') {
+    panel(180, 350, W - 360, 130);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = "bold 26px 'Courier New', monospace";
+    ctx.fillText('PAUSE', W / 2, 406);
+    ctx.fillStyle = '#8fa3d9';
+    ctx.font = "14px 'Courier New', monospace";
+    ctx.fillText('P / タップ で再開', W / 2, 442);
+    return;
+  }
+
+  if (state === 'clear') {
+    panel(90, 300, W - 180, wasSplit ? 240 : 210);
+    if (wasSplit) {
+      ctx.fillStyle = t.accent;
+      ctx.font = "bold 30px 'Courier New', monospace";
+      ctx.fillText('QIX SPLIT!!', W / 2, 348);
+      ctx.fillStyle = '#7bffa0';
+      ctx.font = "bold 24px 'Courier New', monospace";
+      ctx.fillText('AREA CLEAR!', W / 2, 384);
+    } else {
+      ctx.fillStyle = '#7bffa0';
+      ctx.font = "bold 32px 'Courier New', monospace";
+      ctx.fillText('AREA CLEAR!', W / 2, 356);
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.font = "bold 17px 'Courier New', monospace";
+    ctx.fillText('占領率 ' + percent().toFixed(1) + '%', W / 2, wasSplit ? 424 : 400);
+    ctx.fillStyle = '#ffd76b';
+    ctx.fillText('BONUS +' + lastBonus, W / 2, wasSplit ? 452 : 428);
+    if (stTimer > 0.8 && blinkOn) {
+      ctx.fillStyle = '#cdd8ff';
+      ctx.font = "bold 15px 'Courier New', monospace";
+      ctx.fillText('Z / タップ で次のエリアへ', W / 2, wasSplit ? 508 : 478);
+    }
+    return;
+  }
+
+  if (state === 'over') {
+    panel(90, 310, W - 180, 200);
+    ctx.fillStyle = '#ff5c8a';
+    ctx.font = "bold 34px 'Courier New', monospace";
+    ctx.fillText('GAME OVER', W / 2, 366);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = "bold 17px 'Courier New', monospace";
+    ctx.fillText('SCORE ' + score, W / 2, 406);
+    ctx.fillStyle = '#6d7ba8';
+    ctx.fillText('HI ' + hiScore, W / 2, 432);
+    if (stTimer > 0.8 && blinkOn) {
+      ctx.fillStyle = '#cdd8ff';
+      ctx.font = "bold 15px 'Courier New', monospace";
+      ctx.fillText('Z / タップ でタイトルへ', W / 2, 478);
+    }
+  }
+}
+
+/* ---------------- メインループ ---------------- */
+let last = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.05) dt = 0.05;
+  blinkT += dt;
+  stTimer += dt;
+
+  tickMeta(dt);
+  if (state === 'play') update(dt);
+  else {
+    // タイトル/オプション/READYではQIXがアトラクト的に泳ぐ
+    if (state === 'title' || state === 'options' || state === 'ready') updateQixes(dt);
+    updateParticles(dt); updateFloats(dt);
+  }
+
+  render();
+}
+
+/* ---------------- キーボード ---------------- */
+const KEYDIR = {
+  ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
+  w:'up', s:'down', a:'left', d:'right',
+  W:'up', S:'down', A:'left', D:'right',
+};
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  Snd.ensure();
+
+  if (k === 'm' || k === 'M') {
+    const m = Snd.toggleMute();
+    floats.push({ x: W / 2, y: H / 2, txt: m ? 'MUTE' : 'SOUND ON', t: 1.0, col: '#cdd8ff' });
+    e.preventDefault(); return;
+  }
+
+  // OPTIONS画面の操作
+  if (state === 'options') {
+    if (k === 'ArrowUp'   || k === 'w' || k === 'W') { optSel = (optSel + OPT_ITEMS.length - 1) % OPT_ITEMS.length; Snd.blip(); }
+    else if (k === 'ArrowDown' || k === 's' || k === 'S') { optSel = (optSel + 1) % OPT_ITEMS.length; Snd.blip(); }
+    else if (k === 'ArrowLeft' || k === 'a' || k === 'A') adjustOpt(-1);
+    else if (k === 'ArrowRight'|| k === 'd' || k === 'D') adjustOpt(1);
+    else if (k === 'z' || k === 'Z' || k === ' ' || k === 'Enter') {
+      if (OPT_ITEMS[optSel].k === '_back') closeOptions();
+      else adjustOpt(1);
+    }
+    else if (k === 'Escape' || k === 'x' || k === 'X') closeOptions();
+    e.preventDefault(); return;
+  }
+
+  if (KEYDIR[k]) { pressDir(KEYDIR[k]); e.preventDefault(); return; }
+  if (k === 'z' || k === 'Z' || k === ' ' || k === 'j') {
+    held.fast = true;
+    if (state !== 'play' && state !== 'ready' && state !== 'pause') onAction();
+    e.preventDefault(); return;
+  }
+  if (k === 'x' || k === 'X' || k === 'Shift' || k === 'k') {
+    held.slow = true;
+    if (state === 'title') openOptions();
+    else if (state !== 'play' && state !== 'ready' && state !== 'pause') onAction();
+    e.preventDefault(); return;
+  }
+  if (k === 'o' || k === 'O') { if (state === 'title') openOptions(); return; }
+  if (k === 'Enter') { if (state !== 'play' && state !== 'ready' && state !== 'pause') onAction(); return; }
+  if (k === 'p' || k === 'P' || k === 'Escape') {
+    if (state === 'play' || state === 'ready' || state === 'pause') togglePause();
+    return;
+  }
+});
+window.addEventListener('keyup', e => {
+  const k = e.key;
+  if (KEYDIR[k]) { releaseDir(KEYDIR[k]); return; }
+  if (k === 'z' || k === 'Z' || k === ' ' || k === 'j') held.fast = false;
+  if (k === 'x' || k === 'X' || k === 'Shift' || k === 'k') held.slow = false;
+});
+window.addEventListener('blur', () => { if (state === 'play' || state === 'ready') doPause(); });
+
+/* ---------------- タッチ操作 ---------------- */
+function bindHold(id, down, up) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('pointerdown', e => { e.preventDefault(); Snd.ensure(); down(); });
+  const rel = e => { e.preventDefault(); up(); };
+  el.addEventListener('pointerup', rel);
+  el.addEventListener('pointercancel', rel);
+  el.addEventListener('pointerleave', rel);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+[['b-up','up'],['b-down','down'],['b-left','left'],['b-right','right']].forEach(([id, d]) => {
+  bindHold(id, () => pressDir(d), () => releaseDir(d));
+});
+bindHold('b-fast', () => {
+  held.fast = true;
+  if (state !== 'play' && state !== 'ready' && state !== 'pause' && state !== 'options') onAction();
+}, () => { held.fast = false; });
+bindHold('b-slow', () => {
+  held.slow = true;
+  if (state === 'title') openOptions();
+  else if (state !== 'play' && state !== 'ready' && state !== 'pause' && state !== 'options') onAction();
+}, () => { held.slow = false; });
+
+// キャンバス上のタップを状態別に振り分け
+function canvasPos(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+}
+function inRect(p, r) { return r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; }
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  Snd.ensure();
+  const p = canvasPos(e);
+
+  if (state === 'title') {
+    if (inRect(p, titleOptRect)) openOptions();
+    else startGame();
+    return;
+  }
+  if (state === 'options') {
+    const row = optRects.find(r => inRect(p, r));
+    if (!row) return;
+    optSel = row.idx;
+    if (OPT_ITEMS[optSel].k === '_back') { closeOptions(); return; }
+    adjustOpt(p.x < W / 2 ? -1 : 1); // 行の左半分で−、右半分で+
+    return;
+  }
+  if (state === 'play' || state === 'ready') {
+    if (inRect(p, pauseRect)) doPause();
+    return;
+  }
+  if (state === 'pause') { doResume(); return; }
+  onAction(); // clear / over
+});
+
+/* ---------------- 画面サイズ調整 ---------------- */
+function fitCanvas() {
+  const pad = document.getElementById('pad');
+  const padH = (getComputedStyle(pad).display !== 'none') ? pad.offsetHeight + 8 : 0;
+  const s = Math.min((window.innerWidth - 8) / W, (window.innerHeight - padH - 12) / H);
+  cv.style.width = Math.floor(W * s) + 'px';
+  cv.style.height = Math.floor(H * s) + 'px';
+}
+window.addEventListener('resize', fitCanvas);
+
+/* ---------------- 起動 ---------------- */
+applyTheme();
+applyCrt();
+initLevel(1);
+Bgm.play('title'); // 最初の操作でAudioContextが起きたら鳴り始める
+fitCanvas();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
