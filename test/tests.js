@@ -22,6 +22,11 @@ assert('初期占領率0%', percent() === 0);
 let m = steps(-1, 0, 10);
 assert('壁沿いに10歩移動', m === 10, m);
 
+// ---- 2b) 描画ボタン無しで空き地へ押すとヒント ----
+held.fast = false; held.slow = false; hintT = 0; floats = [];
+pressDir('up'); update(0.1); releaseDir('up');
+assert('Z無しで空き地へ押すとヒント表示', floats.some(f => /Z \/ X/.test(f.txt)) && !player.drawing);
+
 // ---- 3) 描画→停止→導火線→ミス ----
 held.fast = true;
 m = steps(0, -1, 20);

@@ -884,6 +884,7 @@ let shakeT = 0;                 // 画面揺れの残り時間
 let pausedFrom = 'play';        // ポーズ前の状態(ready/play)
 let optSel = 0;                 // OPTIONS選択行
 let homeCell = -1;              // SPARXの出現セル
+let hintT = 0;                  // 「Zを押しながら」ヒントの再表示までの時間
 
 // c=今いるセル / prev=直前のセル / lastDir=直前に進んだキー方向(直進判定用)
 const player = { c:0, prev:-1, lastDir:null, acc:0, drawing:false, usedFast:false, invuln:0 };
@@ -1235,6 +1236,18 @@ function checkExtend() {
   }
 }
 
+// 線の上で空き地へ進もうとして止まったら、線の引き方をそっと教える
+function drawHint() {
+  if (player.drawing || held.fast || held.slow || hintT > 0) return;
+  const nb = surf.nb, c = player.c;
+  let open = false;
+  for (let k = 0; k < 4; k++) if (nb[c * 4 + k] >= 0 && grid[nb[c * 4 + k]] === OPEN) open = true;
+  if (!open) return;
+  hintT = 3;
+  const p = surf.screenOf(c);
+  floats.push({ x: p.x, y: p.y - 18, txt: 'Z / X を押しながらで線を引く', t: 1.8, col: '#ffd76b' });
+}
+
 /* ---------------- 導火線 ---------------- */
 function fuseReset() { fuse.wait = 0; fuse.pos = 0; fuse.lit = false; fuse.sndT = 0; }
 function effFuseDelay() { return CONFIG.FUSE_DELAY * diff().fuse; }
@@ -1505,6 +1518,7 @@ function update(dt) {
     return;
   }
   if (player.invuln > 0) player.invuln -= dt;
+  if (hintT > 0) hintT -= dt;
 
   // プレイヤー移動(描画中は描画ボタンを押している間だけ進める)
   const d = currentDir();
@@ -1517,7 +1531,7 @@ function update(dt) {
     while (player.acc >= 1) {
       player.acc -= 1;
       if (playerMove(d)) stepped = true;
-      else { player.acc = 0; break; }
+      else { player.acc = 0; drawHint(); break; }
       if (state !== 'play' || deathTimer > 0) break; // クリア/ミス発生時は中断
     }
   } else {
