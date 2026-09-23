@@ -302,8 +302,9 @@ for (const key of Object.keys(CONFIG.SURF)) {
   let bad = 0, asym = 0, rbad = 0;
   for (let c = 0; c < S.N; c++) {
     const ns = nbOf(c);
-    if (new Set(ns).size !== 4 || ns.some(b => b < 0 || b === c)) bad++;
-    for (const b of ns) if (!nbOf(b).includes(c)) asym++;
+    const ok = ns.filter(b => b >= 0);
+    if (new Set(ok).size !== ok.length || ok.includes(c) || (!S.border && ok.length !== 4)) bad++;
+    for (const b of ok) if (!nbOf(b).includes(c)) asym++;
     const r = Math.hypot(S.pos[c * 3], S.pos[c * 3 + 1], S.pos[c * 3 + 2]);
     const nl = Math.hypot(S.nor[c * 3], S.nor[c * 3 + 1], S.nor[c * 3 + 2]);
     if (!(r < 1.001) || Math.abs(nl - 1) > 1e-3) rbad++;
@@ -331,7 +332,7 @@ for (const key of Object.keys(CONFIG.SURF)) {
 }
 
 // ---- 27) ドーナツ・クラインの壺の貼り合わせ ----
-for (const [key, loopU] of [['TORUS', 1], ['KLEIN', 2]]) {
+for (const [key, loopU] of [['TORUS', 1], ['KLEIN', 2], ['MOBIUS', 2], ['KNOT', 1]]) {
   const S = getSurface(key), nbOf = c => Array.from(S.nb.slice(c * 4, c * 4 + 4));
   const walk = (start, k0, len) => {
     let prev = start, c = S.nb[start * 4 + k0];
@@ -341,7 +342,8 @@ for (const [key, loopU] of [['TORUS', 1], ['KLEIN', 2]]) {
   const st = 5 * S.NU + 7;
   assert(key + ': u方向に直進すると' + (loopU === 2 ? '2周で(裏返って)' : '1周で') + '戻る',
     walk(st, 1, loopU * S.NU) === st && (loopU === 1 || walk(st, 1, S.NU) !== st));
-  assert(key + ': v方向に直進すると1周で戻る', walk(st, 2, S.NV) === st);
+  if (!S.border) assert(key + ': v方向に直進すると1周で戻る', walk(st, 2, S.NV) === st);
+  else assert(key + ': 縁の外は -1(行き止まり)', S.nb[st % S.NU * 4] === -1 || S.nb[(st % S.NU) * 4] === -1);
 }
 {
   const S = getSurface('KLEIN');

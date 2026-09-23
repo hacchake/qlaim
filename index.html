@@ -171,15 +171,21 @@ const CONFIG = {
     TRUNC_ICOSA: s3({ label:'切頂20面体',   sub:'切頂正多面体 = サッカーボール', shape:'truncIcosa', music:'chip' }),
     CUBOCTA:     s3({ label:'立方八面体',   sub:'準正多面体',         shape:'cubocta',     music:'ambient' }),
     ICOSIDODECA: s3({ label:'20・12面体',   sub:'準正多面体',         shape:'icosidodeca', music:'ambient' }),
+    RHOMBICUBOCTA: s3({ label:'斜方立方八面体', sub:'準正多面体',     shape:'rhombicubocta', music:'chip' }),
+    TRUNC_OCTA:  s3({ label:'切頂八面体',   sub:'切頂正多面体',       shape:'truncOcta',   music:'orbit' }),
+    TRUNC_DODECA: s3({ label:'切頂12面体',  sub:'切頂正多面体',       shape:'truncDodeca', music:'ambient' }),
     STELLA:      s3({ label:'星型八面体',   sub:'星型 (ケプラーの星)', shape:'stella',     music:'idm', target:65 }),
     SSD:         s3({ label:'小星型12面体', sub:'星型正多面体',       shape:'ssd',         music:'idm', target:65 }),
     GSD:         s3({ label:'大星型12面体', sub:'星型正多面体',       shape:'gsd',         music:'drone', target:65 }),
     TORUS:       s3({ label:'ドーナツ',     sub:'トーラス',           shape:'torus',       music:'ambient', home:4 }),
+    MOBIUS:      s3({ label:'メビウスの帯', sub:'縁が1本だけのねじれた帯', shape:'mobius', music:'ambient' }),
+    KNOT:        s3({ label:'三葉結び目',   sub:'結び目の形の管',     shape:'trefoil',     music:'idm', home:4 }),
     KLEIN:       s3({ label:'クラインの壺', sub:'表と裏のない曲面',   shape:'klein',       music:'drone', target:65, home:4 }),
   },
   // TOURモードでエリアが巡る順番
-  TOUR: ['PLANE', 'CUBE', 'SPHERE', 'TETRA', 'DODECA', 'TRUNC_ICOSA', 'CUBOCTA', 'STELLA', 'TORUS',
-         'OCTA', 'ICOSA', 'TRUNC_TETRA', 'TRUNC_CUBE', 'ICOSIDODECA', 'SSD', 'GSD', 'KLEIN'],
+  TOUR: ['PLANE', 'CUBE', 'SPHERE', 'TETRA', 'DODECA', 'TRUNC_ICOSA', 'CUBOCTA', 'STELLA', 'TORUS', 'MOBIUS',
+         'OCTA', 'ICOSA', 'TRUNC_TETRA', 'TRUNC_CUBE', 'ICOSIDODECA', 'RHOMBICUBOCTA', 'TRUNC_OCTA', 'TRUNC_DODECA',
+         'SSD', 'GSD', 'KNOT', 'KLEIN'],
 };
 
 /* ---- 難易度プリセット(OPTIONSで選択) ----
@@ -977,6 +983,9 @@ const SHAPES = {
   truncTetra:  () => convex(truncate(POLY.tetra(), 1 / 3)),
   truncCube:   () => convex(truncate(POLY.cube(), 1 / (2 + Math.SQRT2))),
   truncIcosa:  () => convex(truncate(POLY.icosa(), 1 / 3)),
+  truncOcta:   () => convex(truncate(POLY.octa(), 1 / 3)),
+  truncDodeca: () => convex(truncate(POLY.dodeca(), 1 / (2 + PHI))),   // 面が正十角形になる切り方
+  rhombicubocta: () => convex(uniqPts(cyc3([1, 1, 1 + Math.SQRT2]).flatMap(signsOf))),
   cubocta:     () => convex(truncate(POLY.cube(), 0.5)),
   icosidodeca: () => convex(truncate(POLY.icosa(), 0.5)),
   stella:      () => { const T = scalePts(POLY.tetra(), 1); return [hullPlanes(T), hullPlanes(T.map(v => v.map(x => -x)))]; },
@@ -1150,19 +1159,39 @@ function kleinBottle(u, v) {
     2 / 15 * (3 + 5 * cu * su) * sv,
   ];
 }
+// 三葉結び目の管: 結び目の曲線 c(t) のまわりに半径 r の管をかぶせる(向きはフレネ標構)
+function trefoilTube(u, v) {
+  const c = t => [Math.sin(t) + 2 * Math.sin(2 * t), Math.cos(t) - 2 * Math.cos(2 * t), -Math.sin(3 * t)];
+  const e = 1e-3, p = c(u), a = c(u - e), b = c(u + e);
+  const T = vnorm(vadd(b, a, -1));
+  const acc = [a[0] + b[0] - 2 * p[0], a[1] + b[1] - 2 * p[1], a[2] + b[2] - 2 * p[2]];
+  const Nn = vnorm(vadd(acc, T, -vdot(acc, T))), B = vcross(T, Nn), r = 0.5;
+  const cv = Math.cos(v) * r, sv = Math.sin(v) * r;
+  return [p[0] + cv * Nn[0] + sv * B[0], p[1] + cv * Nn[1] + sv * B[1], p[2] + cv * Nn[2] + sv * B[2]];
+}
+/* PARAM_SHAPES の項目:
+   NU,NV: 格子の数 / uMax: u の範囲 / vRange: v の範囲(省略時 0..2π)
+   flip: u の端をまたぐと v が反転 / flipOff: 反転のしかた(y → flipOff − y)
+   border: v の端は貼らずに「縁」にする(メビウスの帯) */
 const PARAM_SHAPES = {
+  mobius: { NU: 120, NV: 22, flip: true, flipOff: 22, border: true, uMax: Math.PI * 2, vRange: [-1, 1], f(u, v) {
+    const r = 1 + v / 2 * Math.cos(u / 2), x = r * Math.cos(u), y = r * Math.sin(u), z = v / 2 * Math.sin(u / 2), a = 1.0;
+    return [x, y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
+  } },
+  trefoil: { NU: 180, NV: 22, flip: false, uMax: Math.PI * 2, f: trefoilTube },
   torus: { NU: 108, NV: 40, flip: false, uMax: Math.PI * 2, f(u, v) {
     const r = 1 + 0.45 * Math.cos(v), y = 0.45 * Math.sin(v), z = r * Math.sin(u), a = 0.6; // 少し傾ける
     return [r * Math.cos(u), y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
   } },
   // camSquash: カメラが自機を追う向きの横成分を縮める(クラインの壺は横から見ると形が分かりやすい)
-  klein: { NU: 120, NV: 44, flip: true, uMax: Math.PI, f: kleinBottle, camSquash: 0.35 },
+  klein: { NU: 120, NV: 44, flip: true, flipOff: 22, uMax: Math.PI, f: kleinBottle, camSquash: 0.35 },
 };
 
 function makeParamSurface(key) {
   const def = CONFIG.SURF[key], PS = PARAM_SHAPES[def.shape];
   const NU = PS.NU, NV = PS.NV, N = NU * NV, flip = PS.flip, nv = (NU + 1) * (NV + 1);
-  const raw0 = (x, y) => PS.f(x / NU * PS.uMax, y / NV * Math.PI * 2);
+  const FO = PS.flipOff, border = !!PS.border, VR = PS.vRange || [0, Math.PI * 2];
+  const raw0 = (x, y) => PS.f(x / NU * PS.uMax, VR[0] + y / NV * (VR[1] - VR[0]));
   // 中心を原点に、いちばん遠い点が半径1になるようにそろえる
   const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
   for (let y = 0; y <= NV; y += 0.5) for (let x = 0; x <= NU; x += 0.5) {
@@ -1175,11 +1204,13 @@ function makeParamSurface(key) {
   const raw = (x, y) => { const q = raw0(x, y); return [(q[0] - C[0]) / RR, (q[1] - C[1]) / RR, (q[2] - C[2]) / RR]; };
   // 端をまたいだ座標・セル番号の貼り合わせ
   function wrapXY(x, y) {
-    if (x >= NU || x < 0) { const k = Math.floor(x / NU); x -= k * NU; if (flip && (k & 1)) y = NV / 2 - y; }
-    return [x, ((y % NV) + NV) % NV];
+    if (x >= NU || x < 0) { const k = Math.floor(x / NU); x -= k * NU; if (flip && (k & 1)) y = FO - y; }
+    return [x, border ? clamp(y, 0, NV - 1e-6) : ((y % NV) + NV) % NV];
   }
+  // セル番号。縁(border)の外は -1
   function cellIdx(i, j) {
-    if (i >= NU || i < 0) { const k = Math.floor(i / NU); i -= k * NU; if (flip && (k & 1)) j = NV / 2 - 1 - j; }
+    if (i >= NU || i < 0) { const k = Math.floor(i / NU); i -= k * NU; if (flip && (k & 1)) j = FO - 1 - j; }
+    if (border) return j < 0 || j >= NV ? -1 : j * NU + i;
     return (((j % NV) + NV) % NV) * NU + i;
   }
   const cellAtP = (x, y) => {
@@ -1216,13 +1247,18 @@ function makeParamSurface(key) {
   let hi0 = hc % NU;
   const hj0 = (hc / NU) | 0;
   if (flip) hi0 = clamp(hi0, h + 1, NU - h - 2);
+  if (border) hi0 = NU >> 2;
   return {
-    key, def, is3D: true, sph: false, sorted: true, twoSided: true, translucent: true,
+    key, def, is3D: true, sph: false, sorted: true, twoSided: true, translucent: true, border,
     NU, NV, N, nb, nb8: buildNb8(N, nb), pos, dir, nor, nc, par, quad, vpos, nv,
     cellAtP, cellIdx,
     ptCell: q => cellAtP(q[0], q[1]),
     world: q => raw(q[0], q[1]),
     setup() {
+      if (border) {   // 縁のある曲面: 縁(上下の列)が最初の線。自機は上の縁から
+        for (let i = 0; i < NU; i++) { grid[i] = WALL; grid[(NV - 1) * NU + i] = WALL; }
+        return { start: cellIdx(hi0, NV - 1), home: cellIdx(hi0 + (NU >> 1), 0) };
+      }
       for (let dj = -h; dj < h; dj++) for (let di = -h; di < h; di++) {
         const c = cellIdx(hi0 + di, hj0 + dj);
         grid[c] = WALL;
@@ -1232,7 +1268,7 @@ function makeParamSurface(key) {
     },
     screenOf(c) { return projXYZ(pos[c * 3], pos[c * 3 + 1], pos[c * 3 + 2]); },
     qixSpawn(k, nq) {
-      const w = wrapXY(hi0 + NU / 2 + (nq > 1 ? (k ? 6 : -6) : 0), hj0 + NV / 2);
+      const w = wrapXY(hi0 + NU / 2 + (nq > 1 ? (k ? 6 : -6) : 0), border ? NV / 2 : hj0 + NV / 2);
       return { x: w[0], y: w[1], head: rand(0, Math.PI * 2) };
     },
     qixCell: q => cellAtP(q.x, q.y),
