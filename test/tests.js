@@ -566,5 +566,39 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('スクリーンショットはtoBlobが無い環境では何もしない', saveShot() === false);
 }
 
+
+// ---- 40) SEEKER ----
+{
+  settings.mode = 'PLANE'; settings.tutor = true;
+  startGame(); initLevel(3);
+  assert('AREA3までSEEKERなし', seekers.length === 0);
+  initLevel(4); setState('play');
+  assert('AREA4でSEEKER出現(空き地)', seekers.length === 1 && grid[seekers[0].c] === OPEN);
+  for (let i = 0; i < 300; i++) updateSeekers(1/60);
+  assert('SEEKERは空き地を動く', grid[seekers[0].c] === OPEN);
+  // 追跡: 線を引いている最中は自機へ近づく
+  player.invuln = 99; held.fast = false; steps(0, -1, 3);
+  const P = surf.pos, dist = c => Math.hypot(P[c * 3] - P[player.c * 3], P[c * 3 + 1] - P[player.c * 3 + 1]);
+  const d0 = dist(seekers[0].c);
+  for (let i = 0; i < 20; i++) stepSeeker(seekers[0]);
+  assert('線を引いている間は自機へ近づく', dist(seekers[0].c) < d0, d0.toFixed(1) + '→' + dist(seekers[0].c).toFixed(1));
+  // 囲んで倒す: SEEKERを自機の近くに置いて囲う
+  applyDeath(); player.invuln = 99; lives = 3;
+  const x0 = player.c % GW;
+  seekers[0].c = idx(x0 - 2, GH - 3);
+  const sc0 = score;
+  steps(0, -1, 4); steps(-1, 0, 4); steps(0, 1, 6);
+  assert('囲むとSEEKERを倒してボーナス', seekers.length === 0 && score - sc0 >= CONFIG.SEEKER_BONUS, 'n=' + seekers.length);
+  // 描きかけの線に触れるとミス
+  initLevel(4); setState('play'); player.invuln = 0; steps(0, -1, 3);
+  seekers[0].c = trail[1]; seekers[0].acc = 0; player.invuln = 0;
+  grid[trail[1]] = TRAIL;
+  seekers[0].c = surf.nb[trail[1] * 4 + 1]; seekers[0].prev = -1;
+  if (grid[seekers[0].c] === OPEN) { seekers[0].acc = 0; for (let i = 0; i < 50 && deathTimer <= 0; i++) { stepSeeker(seekers[0]); if (grid[seekers[0].c] === TRAIL || seekers[0].c === player.c) death(); } }
+  assert('線に触れるとミス', deathTimer > 0);
+  let err = null; try { render(); settings.mode = 'SPHERE'; startGame(); initLevel(5); setState('play'); render(); } catch (e) { err = e.stack; }
+  assert('SEEKERの描画が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

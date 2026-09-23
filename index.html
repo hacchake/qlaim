@@ -86,6 +86,9 @@
      カメラは自機(Clawd)を追いかけて回り込み、方向キーは常に「画面上の向き」
    ・TOUR … 全部の盤面をエリアごとに巡る
 
+   v4.6 SEEKER … AREA 4 から。空き地を動き、線を引いている間は自機を追ってくる。
+     描きかけの線に触れるとミス。線で囲んで閉じ込めると倒せる
+
    v4 の新要素
    ・アイテム … 空き地にときどき出る。線で囲むと手に入る(SLOW/SHIELD/STAR/1UP)
    ・コンボ … 続けて囲むと得点倍率が上がる
@@ -139,6 +142,11 @@ const CONFIG = {
   BIG_CLAIM: 10,        // 一度にこの%以上囲むと BIG CLAIM ボーナス
   BIG_CLAIM_PTS: 120,   // BIG CLAIM ボーナス(1%あたり)
   READY_TIME: 1.4,      // AREA表示(READY)の時間(秒)
+
+  /* -- SEEKER(追跡者) --------------------------------------------- */
+  SEEKER_FROM: 4,       // このエリアから SEEKER が出る(8エリア目から2体)
+  SEEKER_SPEED: 7,      // SEEKER の速さ(セル/秒。盤面の speed 倍率がかかる)
+  SEEKER_BONUS: 1500,   // 囲んで倒したときのボーナス
 
   /* -- アイテム・コンボ ---------------------------------------- */
   ITEM_INTERVAL: 11,    // アイテムが出る間隔(秒)
@@ -1448,6 +1456,7 @@ let homeCell = -1;              // SPARXの出現セル
 let claimAt = new Float32Array(0), waveFrom = 0, waveUntil = 0;
 let rings = [];                 // 囲んだ瞬間の光の輪
 let items = [], itemTimer = 0;  // アイテム { c:セル, k:種類, t:経過秒 }
+let seekers = [];               // SEEKER { c:セル, prev, acc, ph }
 let slowT = 0, starT = 0;       // SLOW / STAR の残り時間
 let combo = 0, comboT = 0;      // コンボ数 / 次のコンボまでの残り時間
 let guarded = false;            // SHIELD でミスを防いだ最中
@@ -1564,6 +1573,7 @@ function initLevel(lv) {
   claimAt = new Float32Array(surf.N).fill(-1e9);
   waveUntil = 0; rings = [];
   items = []; itemTimer = CONFIG.ITEM_INTERVAL * 0.6;
+  seekers = [];
   slowT = 0; starT = 0; combo = 0; comboT = 0; guarded = false; areaTime = 0;
   const s = surf.setup();
   homeCell = s.home;
@@ -1586,6 +1596,8 @@ function initLevel(lv) {
   const ns = Math.min(4, surf.def.sparxStart + ((lv - 1) >> 1));
   for (let i = 0; i < ns; i++) spawnSparx(i % 2 ? 1 : -1, surf.def.sparxWait + i * 1.5 * (surf.def.sparxWait > 0));
   sparxTimer = CONFIG.SPARX_INTERVAL * diff().interval;
+  // SEEKER は盤面ができて自機の位置が決まってから出す
+  if (lv >= CONFIG.SEEKER_FROM) for (let i = 0; i < (lv >= CONFIG.SEEKER_FROM + 4 ? 2 : 1); i++) spawnSeeker();
 
   particles = []; floats = [];
   deathTimer = 0; wasSplit = false; shakeT = 0;
@@ -1796,6 +1808,7 @@ function closeTrail() {
       claimed += gained;
       score += gained * mul;
       collectItems();
+      crushSeekers();
       for (const q of crushed) {
         const sp = surf.qixScreen(q);
         spawnParticles(sp.x, sp.y, 42, theme().accent);
@@ -1818,6 +1831,7 @@ function closeTrail() {
   claimed += gained;
 
   collectItems();
+  crushSeekers();
   tutorAdvance(3);
   if (gained > 0) {
     // コンボ: 前に囲んでから COMBO_TIME 秒以内なら倍率アップ
@@ -1857,6 +1871,86 @@ function closeTrail() {
   snapPlayerToBoundary();
 
   if (percent() >= target()) startClear(false);
+}
+
+/* ---------------- SEEKER(追跡者) ---------------- */
+// 自機からいちばん遠いあたりの空き地に出す
+function spawnSeeker() {
+  const P = surf.pos, pc = player.c * 3;
+  let best = -1, bd = -1;
+  for (let tries = 0; tries < 200; tries++) {
+    const c = (Math.random() * surf.N) | 0;
+    if (grid[c] !== OPEN) continue;
+    const d = (P[c * 3] - P[pc]) ** 2 + (P[c * 3 + 1] - P[pc + 1]) ** 2 + (P[c * 3 + 2] - P[pc + 2]) ** 2;
+    if (d > bd) { bd = d; best = c; }
+  }
+  if (best >= 0) seekers.push({ c: best, prev: -1, acc: 0, ph: rand(0, 6) });
+}
+function stepSeeker(k) {
+  const nb = surf.nb, P = surf.pos, c = k.c, cands = [];
+  for (let i = 0; i < 4; i++) { const n = nb[c * 4 + i]; if (n >= 0 && grid[n] !== WALL) cands.push(n); }
+  if (!cands.length) return;
+  let next;
+  if (player.drawing && Math.random() < 0.8) {
+    // 線を引いている間は自機へ寄っていく(距離がいちばん縮む隣へ)
+    const t = player.c * 3;
+    let bd = Infinity;
+    for (const n of cands) {
+      const d = (P[n * 3] - P[t]) ** 2 + (P[n * 3 + 1] - P[t + 1]) ** 2 + (P[n * 3 + 2] - P[t + 2]) ** 2;
+      if (d < bd) { bd = d; next = n; }
+    }
+  } else {
+    // ふだんはふらふら(なるべく直進、戻らない)
+    const kp = k.prev >= 0 ? nbIndex(c, k.prev) : -1;
+    const straight = kp >= 0 ? nb[c * 4 + ((kp + 2) & 3)] : -1;
+    const opts = cands.filter(n => n !== k.prev);
+    next = opts.includes(straight) && Math.random() < 0.85 ? straight : pick(opts.length ? opts : cands);
+  }
+  k.prev = c; k.c = next;
+}
+function updateSeekers(dt) {
+  const spd = CONFIG.SEEKER_SPEED * surf.def.speed * diff().qix * enemySlow();
+  for (const k of seekers) {
+    k.acc += dt * spd; k.ph += dt;
+    while (k.acc >= 1) {
+      k.acc -= 1;
+      stepSeeker(k);
+      if (grid[k.c] === TRAIL || (player.drawing && k.c === player.c)) { death(); return; }
+    }
+  }
+}
+// 囲まれて空き地から追い出された SEEKER は倒れる
+function crushSeekers() {
+  for (const k of seekers.filter(k => grid[k.c] === WALL)) {
+    seekers.splice(seekers.indexOf(k), 1);
+    const p = surf.screenOf(k.c);
+    score += CONFIG.SEEKER_BONUS;
+    floats.push({ x: p.x, y: p.y - 12, txt: 'SEEKER DOWN +' + CONFIG.SEEKER_BONUS, t: 1.6, col: '#ff5cf0', big: true });
+    spawnParticles(p.x, p.y, 36, '#ff5cf0');
+    rings.push({ x: p.x, y: p.y, t: 0.2, col: '#ff5cf0' });
+    Snd.split();
+  }
+}
+// 見た目: 脈打つ紫の玉に、自機のほうを見る目
+function drawSeeker(k, faint) {
+  const p = surf.screenOf(k.c), q = surf.screenOf(player.c), r = 7 + Math.sin(k.ph * 7) * 1.5;
+  ctx.globalAlpha = faint ? 0.3 : 1;
+  ctx.shadowColor = '#ff5cf0'; ctx.shadowBlur = 14;
+  ctx.fillStyle = '#c231b8';
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  const a = Math.atan2(q.y - p.y, q.x - p.x);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 2, p.y + Math.sin(a) * 2, 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#200018';
+  ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 3.2, p.y + Math.sin(a) * 3.2, 1.6, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function drawSeekers() {
+  for (const k of seekers) {
+    if (surf.is3D && !visA[k.c]) { drawOffMarker(surf.screenOf(k.c), '#ff5cf0', 7); continue; }
+    drawSeeker(k, surf.is3D && surf.twoSided && !frontA[k.c]);
+  }
 }
 
 /* ---------------- アイテム ---------------- */
@@ -2227,6 +2321,8 @@ function update(dt) {
   if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
 
   updateSparxes(dt);
+  if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
+  updateSeekers(dt);
   updateItems(dt);
   areaTime += dt;
   if (tutorStep >= 0) { tutorT += dt; if (tutorStep === 3 && tutorT > 6) tutorAdvance(4); }
@@ -2436,6 +2532,7 @@ function drawBackView(t) {
   const cw = c => [P[c * 3], P[c * 3 + 1], P[c * 3 + 2]];
   for (const it of items) dot(cw(it.c), ITEMS[it.k].col, 3);
   for (const sp of sparxes) dot(cw(sp.c), '#ffe25c', 2.5);
+  for (const k of seekers) dot(cw(k.c), '#ff5cf0', 3.5);
   for (const q of qixes) dot(S.world(q.p || [q.x, q.y]), qixStroke(q.hue, 60, 1), 4.5);
   ctx.fillStyle = '#8fa3d9';
   ctx.font = "bold 10px 'Courier New', monospace";
@@ -2456,6 +2553,7 @@ function render() {
   if (surf.is3D) render3D(t);
   else render2D(t);
   drawItems();
+  drawSeekers();
   if (surf.is3D && state !== 'title' && state !== 'options') drawBackView(t);
   if (state === 'play' || state === 'ready' || state === 'pause') drawStatus();
   if (tutorStep >= 0 && (state === 'play' || state === 'ready')) drawTutor(t);
@@ -3043,6 +3141,11 @@ function renderOverlay() {
       if (qixes.length > 1) {
         ctx.fillStyle = '#ffd76b';
         ctx.fillText('QIX 2体 ─ 分断で即クリア!', W / 2, y);
+        y += 24;
+      }
+      if (seekers.length) {
+        ctx.fillStyle = '#ff5cf0';
+        ctx.fillText('SEEKER 出現 ─ 線を追ってくる。囲めば倒せる', W / 2, y);
       }
     }
     return;
