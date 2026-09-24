@@ -1607,7 +1607,8 @@ function updateCamera(dt) {
   if (!surf.is3D) return;
   // 線を引いている間は少し引いて、まわりを見やすく(READY中は速めに寄ってワープ感)
   // X(held.slow)を押している間は大きく引いて全体を見渡す
-  const wantD = (state === 'play' || state === 'ready') && held.slow ? 5.3 : state === 'play' && player.drawing ? 3.95 : 3.4;
+  const wantD = (state === 'play' || state === 'ready') && held.slow ? 5.3 : state === 'play' && player.drawing ? 3.95
+              : state === 'clear' ? 4.7 : 3.4;   // クリア中は引いて陣地全体を見せる
   cam.D += (wantD - cam.D) * (1 - Math.exp(-dt * (state === 'ready' ? 3.5 : 2.5)));
   if (state === 'play' || state === 'ready') camFollow(player.c, dt);
   else if (state !== 'pause') camRotate([0.25, 1, 0], dt * 0.35); // タイトル等ではゆっくり回る

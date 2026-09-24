@@ -924,5 +924,14 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('残機0で鼓動のタイマーが動く(AC無しでも安全)', !err && heartT > 0.8, err || heartT);
 }
 
+
+// ---- 66) クリア中の俯瞰 ----
+{
+  settings.mode = 'DODECA'; startGame(); stTimer = 2; tickMeta(0.016); cam.D = 3.4;
+  claimed = Math.ceil(initOpen * 0.8); startClear(false);
+  for (let i = 0; i < 120; i++) tickMeta(1/60);
+  assert('クリア中はカメラが引く', cam.D > 4.3, cam.D.toFixed(2));
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
