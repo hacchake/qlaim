@@ -877,7 +877,7 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
   speech.t = 0; speech.cool = 0;
   player.invuln = 0; death();
-  assert('ミスで「うわっ!」', speech.txt === 'うわっ!' && speech.t > 0);
+  assert('ミスでひとこと', (CLAWD_LINES.miss.includes(speech.txt) || RARE_LINES.includes(speech.txt)) && speech.t > 0, speech.txt);
   for (let i = 0; i < 60; i++) updateParticles(1/30);
   assert('吹き出しは時間で消える', speech.t <= 0);
   assert('連発しない(クールダウン中は無視)', say('A') === true && say('B') === false && speech.txt === 'A');
@@ -1032,7 +1032,7 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   level = 5; initLevel(5); setState('play'); claimed = Math.ceil(initOpen * 0.55); startClear(false);
   assert('BONUS AREAで50%以上で「ボーナスハンター」', !!achvGot.bonus50);
   setState('achv'); let err = null; try { render(); } catch (e) { err = e.stack; }
-  assert('実績一覧(21件)の描画', !err && ACHV.length === 21, err || ACHV.length);
+  assert('実績一覧(22件)の描画', !err && ACHV.length === 22, err || ACHV.length);
 }
 
 
@@ -1146,6 +1146,47 @@ buddiesOn = false;
   assert('触手が細い線をすり抜けない', missed === 0, missed);
 }
 buddiesOn = true;
+
+
+// ---- 82) セリフとキャラクター設定 ----
+{
+  const bad = [];
+  for (const k in BUDDIES) {
+    const B = BUDDIES[k];
+    if (!B.nick || !RARITY[B.rar] || !B.bio || !B.lines || !B.lines.hello || !B.lines.idle) bad.push(k + ':設定');
+    if (!Array.isArray(B.st) || B.st.length !== 5 || B.st.some(v => !(v >= 0 && v <= 100))) bad.push(k + ':ステータス');
+    if (B.role === 'ally' && !(B.lines.bye && B.lines.bye.length)) bad.push(k + ':bye');
+    if (['eater', 'squirt', 'thief', 'block', 'dragon'].includes(B.role) && !(B.lines.act && B.lines.act.length)) bad.push(k + ':act');
+  }
+  assert('18種すべてに名前・レア度・性格・5ステータス・セリフ', bad.length === 0, bad.join(','));
+  const tw = BUDDIES.turtle;
+  assert('カメはワーブル(カードのステータスそのまま)', tw.nick === 'ワーブル' && tw.st.join() === '6,23,10,33,61');
+  // 場面のセリフ・レア・時事ネタ
+  assert('場面のセリフ', CLAWD_LINES.claimB.includes(pickLine('claimB', null, 0.9).txt));
+  const rr = pickLine('claimB', null, 0.01);
+  assert('レアなセリフ(約4%)', rr.rare && RARE_LINES.includes(rr.txt));
+  assert('時事ネタ: クリスマス・正月・金曜の夕方・深夜',
+    dateLines(new Date(2026, 11, 25, 20)).some(x => x.includes('クリスマス')) && dateLines(new Date(2027, 0, 2, 10)).some(x => x.includes('あけまして'))
+    && dateLines(new Date(2026, 8, 25, 18)).some(x => x.includes('金曜')) && dateLines(new Date(2026, 8, 24, 2)).some(x => x.includes('寝なくて')));
+  assert('{name}の差し込み', pickLine('meet', { name: 'ガーコ' }, 0.9).txt.includes('ガーコ'));
+  // 性格が動きに効く
+  settings.mode = 'PLANE'; startGame(); setState('play'); buddies = [];
+  const cap = spawnBuddy('capybara'), rab = spawnBuddy('rabbit'), goo = spawnBuddy('goose'), sna = spawnBuddy('snail');
+  assert('PATIENCEが高いほどゆっくり(カピバラ<ウサギ)', cap.spdK < rab.spdK);
+  assert('CHAOSが高いほどいたずらの間隔が短い(ガチョウ<カタツムリ)', goo.cdK < sna.cdK);
+  // buddy がしゃべる
+  buddyTalkCD = 0; assert('buddyがしゃべる', buddySay(sna, 'act') && sna.sayT > 0 && BUDDIES.snail.lines.act.includes(sna.sayTxt));
+  // 色違い: ごほうび2倍
+  buddies = []; const d = spawnBuddy('duck'); d.shiny = true; const s0 = score; rescue(d, { x: 100, y: 100 });
+  assert('色違いのアヒルはごほうび2倍', score - s0 === 4000, score - s0);
+  // 図鑑のカード
+  for (const k in BUDDIES) buddyMet[k] = 'x';
+  let err = null;
+  try { setState('dex'); dexSel = 0; onKeyDown({ key: 'ArrowRight', preventDefault() {} }); onKeyDown({ key: 'z', preventDefault() {} }); render();
+        for (let i = 0; i < 18; i++) { dexSel = i; render(); } onKeyDown({ key: 'x', preventDefault() {} }); }
+  catch (e) { err = e.stack; }
+  assert('図鑑のカード(全18種)が描ける・操作できる', !err && state === 'dex' && dexSel === 17, err || state + dexSel);
+}
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

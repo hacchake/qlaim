@@ -125,6 +125,16 @@ node test/run-tests.js
 - 陣地を減らすときも `claimed === initOpen - 空きセル数` を守る(`erode` で claimed--)
 - 絵は `drawBuddy`(すべて図形)。図鑑は state 'dex'(タイトルの B、OPTIONS)、会った記録は `buddyMet`
 - テストの前半は `buddiesOn = false` にして、ランダムに出る buddy が他の検証を邪魔しないようにしている
+- キャラ設定は `BUDDY_PROFILE`(nick / rar / st=[DEBUGGING,PATIENCE,CHAOS,WISDOM,SNARK] / bio / lines)。カメ=ワーブルはオーナーの /buddy カードそのまま
+- ステータスが動きに効く: 速さ `spdK = 1.25 - PATIENCE/200`、いたずら間隔 `cdK = 1.3 - CHAOS/166`
+- buddy のセリフは `buddySay(b, kind)`(hello/idle/act/bye。`buddyTalkCD` で話が重ならない)。去りぎわは `buddyBye`
+- 色違い(1/40、`buddyShiny` に記録)はごほうび2倍。見た目は金の輪と止まったきらめき(点滅しない)
+- 図鑑は 'dex'(一覧・カーソル `dexSel`)→ 'dexcard'(★レア度・ステータスのカード)
+
+## Clawd のセリフ
+- `sayLine(場面)` が `CLAWD_LINES[場面]` から選ぶ(直前と同じものは避ける)。約4%で `RARE_LINES`(★つき・金ぶち)
+- 時事ネタ: `dateLines(date)` が日付・季節・曜日・時間のセリフを返す(start/idle/clear で約18%)。オフラインなので本物のニュースは取れない。流行りの話題は `TOPICAL_LINES` に書き足す
+- 盤面ごとの感想は `SURF_LINES`。待機7秒・長い線・残機0でもひとこと。吹き出しは `drawBubble`(長い文は2行)
 
 ## 音楽の仕組み(v5)
 - 音の経路: 各音 → (左右パン) → BGMバス → ローパス → コンプレッサー → マスター。リバーブへは `send` で送る
