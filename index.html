@@ -309,6 +309,9 @@ function modeSub(m) {
   return CONFIG.SURF[m].sub;
 }
 
+/* ---- 塗る音(OPTIONS) ---- */
+const CLAIM_SND_OPTS = ['MIX', 'CLASSIC', 'ARPEGGIO', 'SHEPARD', 'HARP', 'BELL', 'STAB'];
+const CLAIM_SND_KEYS = { CLASSIC:'classic', ARPEGGIO:'arp', SHEPARD:'shepard', HARP:'harp', BELL:'bell', STAB:'stab' };
 /* ---- BGMの選び方(OPTIONS)。AUTO は盤面ごとの music ---- */
 const MUSIC_KEYS = ['AUTO', 'SPLASH', 'CLASSIC', 'ORBIT', 'EARTH', 'CHIP', 'DRONE', 'AMBIENT', 'IDM', 'SYNTH', 'LOFI'];
 // 曲の表示名(READY 画面の「♪」)
@@ -679,12 +682,13 @@ const store = (() => {
 })();
 
 const settings = Object.assign(
-  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: THEMES.length, crt: true, mode: 'TOUR', music: 'AUTO', shake: true, glow: true, ink: 'MIX' },
+  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: THEMES.length, crt: true, mode: 'TOUR', music: 'AUTO', shake: true, glow: true, ink: 'MIX', claimSnd: 'MIX' },
   store.get('qlaim.settings', {})
 );
 if (!DIFFS[settings.diff]) settings.diff = 'NORMAL';
 if (!MODES.includes(settings.mode)) settings.mode = 'TOUR';
 if (!MUSIC_KEYS.includes(settings.music)) settings.music = 'AUTO';
+if (!CLAIM_SND_OPTS.includes(settings.claimSnd)) settings.claimSnd = 'MIX';
 if (!['MIX', 'RAINBOW', 'ORANGE', 'PINK', 'CYAN', 'LIME', 'PURPLE', 'YELLOW', 'RED', 'BLUE'].includes(settings.ink)) settings.ink = 'MIX';
 settings.theme = clamp(settings.theme | 0, 0, THEMES.length);   // THEMES.length = AUTO
 function saveSettings() { store.set('qlaim.settings', settings); }
@@ -1097,46 +1101,122 @@ const Snd = (() => {
     s.start(t); s.stop(t + 0.05);
   }
 
-  /* -- 描画中のハム音(軌跡が伸びるほど音程が上がる) -- */
-  let hum2 = null, humF = null, humBase = 110, humStep = -1;
+  /* -- 描画中の音: 無限音階(シェパードトーン) --
+     オクターブ違いの音を6本重ね、真ん中の高さの音ほど大きく、端ほど小さくする。
+     線が伸びるほど五音音階で上がり続けるが、1オクターブ上がると全体が元の形に戻るので、終わりなく上がって聞こえる */
+  let humOs = [], humGs = [], humF = null, humOut = null, humBase = 55, humStep = -1;
+  const HUM_N = 6, HUM_C = 520, HUM_SIG = 1.0;
+  function shepW(f) { const x = Math.log2(f / HUM_C); return Math.exp(-x * x / (2 * HUM_SIG * HUM_SIG)); }
   function startDraw(slow) {
     if (!ac) return;
     stopDraw();
     let b = Bgm.root() || 110;
-    while (b < 90) b *= 2; while (b > 180) b /= 2;
-    humBase = slow ? b : b * 1.5; humStep = -1;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0.0001, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.045, ac.currentTime + 0.05);
-    humF = ac.createBiquadFilter(); humF.type = 'lowpass'; humF.Q.value = 5; humF.frequency.value = 700;
-    hum = ac.createOscillator(); hum2 = ac.createOscillator();
-    hum.type = 'sawtooth'; hum2.type = 'triangle';
-    hum.frequency.value = humBase; hum2.frequency.value = humBase * 2; hum2.detune.value = 7;
-    hum.connect(humF); hum2.connect(humF); humF.connect(g); g.connect(sfxG);
-    hum.start(); hum2.start();
-    hum._g = g;
+    while (b < 40) b *= 2; while (b >= 80) b /= 2;         // いちばん下の音(40〜80Hz)
+    humBase = slow ? b : b * Math.pow(2, 7 / 12); humStep = -1;
+    const t = ac.currentTime;
+    humOut = ac.createGain();
+    humOut.gain.setValueAtTime(0.0001, t); humOut.gain.exponentialRampToValueAtTime(0.05, t + 0.05);
+    humF = ac.createBiquadFilter(); humF.type = 'lowpass'; humF.Q.value = 3; humF.frequency.value = 2400;
+    humF.connect(humOut); humOut.connect(sfxG);
+    humOs = []; humGs = [];
+    for (let k = 0; k < HUM_N; k++) {
+      const o = ac.createOscillator(), g = ac.createGain(), f = humBase * Math.pow(2, k);
+      o.type = 'triangle'; o.frequency.value = f; g.gain.value = shepW(f) * 0.5;
+      o.connect(g); g.connect(humF); o.start();
+      humOs.push(o); humGs.push(g);
+    }
   }
   const HUM_SCALE = [0, 2, 4, 7, 9];
   function updateDraw(len, slow) {
-    if (!hum) return;
-    const st = Math.min(14, Math.floor(len / 5));
+    if (!humOs.length) return;
+    const st = Math.floor(len / 4);                         // 上限なし(無限音階)
     if (st === humStep) return;
+    const wrap = humStep >= 0 && Math.floor(st / 5) !== Math.floor(humStep / 5);
     humStep = st;
-    const n = HUM_SCALE[st % 5] + 12 * Math.floor(st / 5), f = humBase * Math.pow(2, n / 12), t = ac.currentTime;
-    hum.frequency.setTargetAtTime(f, t, 0.03); hum2.frequency.setTargetAtTime(f * 2, t, 0.03);
-    humF.frequency.setTargetAtTime(700 + st * 180, t, 0.05);
+    const frac = HUM_SCALE[st % 5] / 12, t = ac.currentTime;
+    for (let k = 0; k < HUM_N; k++) {
+      const f = humBase * Math.pow(2, k + frac);
+      // 1オクターブ回ったとき(frac が 0 に戻る)は、すべらせずに切り替える(聞こえ方は変わらない)
+      if (wrap) humOs[k].frequency.setValueAtTime(f, t); else humOs[k].frequency.setTargetAtTime(f, t, 0.025);
+      humGs[k].gain.setTargetAtTime(shepW(f) * 0.5, t, 0.025);
+    }
   }
   function stopDraw() {
-    if (hum) {
-      const t = ac.currentTime;
-      try { hum._g.gain.setTargetAtTime(0.0001, t, 0.02); hum.stop(t + 0.1); hum2.stop(t + 0.1); } catch (e) {}
-      hum = null; hum2 = null;
+    if (!humOs.length) return;
+    const t = ac.currentTime;
+    try { humOut.gain.setTargetAtTime(0.0001, t, 0.02); for (const o of humOs) o.stop(t + 0.12); } catch (e) {}
+    humOs = []; humGs = [];
+  }
+  // 無限音階の和音: 音名 pc(半音の数、いくつでも)をオクターブ違いで重ねて鳴らす
+  function shepard(pc, delay, dur, vol, wave) {
+    const fr = ((pc % 12) + 12) % 12 / 12;
+    for (let k = 0; k < 7; k++) {
+      const f = 32.7 * Math.pow(2, k + fr), w = shepW(f);
+      if (w > 0.03) tone(f, f, dur, wave || 'sine', vol * w, delay);
     }
   }
 
   const SCALE = [0, 3, 5, 7, 10, 12, 15, 17]; // ペンタトニック風
+  /* -- 塗る音のいろいろ。どれも「鳴り終わるまでの秒数」を返す(模様の飾りをその後ろに鳴らす) -- */
+  let shepPc = 0, lastClaimSnd = '';
+  const CLAIM_VOICES = {
+    // もとの音: 四角い波で五音音階を駆け上がる
+    classic(base, n) {
+      for (let i = 0; i < n; i++) tone(base * Math.pow(2, SCALE[i] / 12), 0, 0.1, 'square', 0.11, i * 0.055);
+      return n * 0.055;
+    },
+    // アルペジオ: メジャー7th かマイナー9th を上がって下がる。やまびこつき
+    arp(base, n) {
+      const ch = Math.random() < 0.5 ? [0, 4, 7, 11, 14, 11, 7, 4, 0] : [0, 3, 7, 10, 14, 10, 7, 3, 0];
+      const m = Math.min(ch.length, n + 3);
+      for (let i = 0; i < m; i++) {
+        const f = base * Math.pow(2, ch[i] / 12);
+        tone(f, 0, 0.12, 'triangle', 0.1, i * 0.05);
+        tone(f * 2, 0, 0.08, 'sine', 0.04, i * 0.05 + 0.2);        // やまびこ
+      }
+      return m * 0.05;
+    },
+    // 無限音階: 前に塗ったときの続きから上がる。何度塗っても、ずっと上がり続けて聞こえる
+    shepard(base, n) {
+      const m = Math.min(8, n + 2);
+      for (let i = 0; i < m; i++) shepard(shepPc + i * 2, i * 0.07, 0.24, 0.1, 'triangle');
+      shepPc += 2 * m - 2;
+      return m * 0.07;
+    },
+    // ハープ: 2オクターブを一気にかき鳴らす
+    harp(base, n) {
+      const sc = [0, 2, 4, 7, 9], m = 8 + n * 2;
+      for (let i = 0; i < m; i++) {
+        const f = base / 2 * Math.pow(2, (sc[i % 5] + 12 * Math.floor(i / 5)) / 12);
+        tone(f, 0, 0.35, 'triangle', 0.09 * (1 - i / (m + 4)), i * 0.022);
+      }
+      return m * 0.022;
+    },
+    // 鐘の和音
+    bell(base, n) {
+      [0, 7, 12, 16, 19].slice(0, Math.min(5, n)).forEach((k, i) => bell(base * Math.pow(2, k / 12), 0.07, i * 0.07));
+      return Math.min(5, n) * 0.07;
+    },
+    // ベース+和音のスタブ(ファンクっぽく2回)
+    stab(base, n) {
+      tone(base / 4, base / 4, 0.18, 'sawtooth', 0.12);
+      for (const [d, v] of [[0, 0.06], [0.16, 0.045]])
+        [0, 4, 7, 10].forEach(k => tone(base * Math.pow(2, k / 12), 0, 0.09, 'square', v, d));
+      return 0.3;
+    },
+  };
+  // どの音にするか: OPTIONS「塗る音」。MIX はコンボ中は無限音階(上がり続ける)、ほかは前と違うものをランダム
+  function pickClaimSnd() {
+    const want = CLAIM_SND_KEYS[settings.claimSnd];
+    if (want) return want;
+    if (combo > 0) return 'shepard';
+    const ks = Object.keys(CLAIM_VOICES).filter(k => k !== lastClaimSnd);
+    return ks[(Math.random() * ks.length) | 0];
+  }
   return {
     ensure, applyVols, toggleMute, stopDraw, startDraw, updateDraw, react, sweep,
-    note, kick, hat, snare, blipDrum, ohat, crash, tom, clap, setTempo, duck, bell, splat,
+    note, kick, hat, snare, blipDrum, ohat, crash, tom, clap, setTempo, duck, bell, splat, pickClaimSnd,
+    get claimVoices() { return Object.keys(CLAIM_VOICES); },
     get ac() { return ac; },
     claim(cells, slow, pat) {
       const n = 3 + Math.min(4, Math.floor(cells / 400));
@@ -1145,15 +1225,12 @@ const Snd = (() => {
       if (base) { while (base < 300) base *= 2; if (!slow) base *= 0.75; }
       else base = slow ? 392 : 330;
       base *= Math.pow(2, Math.min(combo, 6) / 12);   // コンボが続くほど半音ずつ上がる
-      splat(Math.min(0.22, 0.08 + cells / 6000));      // インクのびちゃっ
-      if (cells > 1500) tone(base / 4, base / 8, 0.35, 'sine', 0.22);   // 大きいと低いどーん
-      for (let i = 0; i < n; i++) {                    // 四角い音と三角の音を重ねて厚く
-        const f = base * Math.pow(2, SCALE[i] / 12);
-        tone(f, 0, 0.1, 'square', 0.07, i * 0.055);
-        tone(f * 2, 0, 0.14, 'triangle', 0.05, i * 0.055 + 0.01);
-      }
+      const kind = pickClaimSnd();
+      lastClaimSnd = kind;
+      if (kind !== 'classic') splat(Math.min(0.2, 0.07 + cells / 6000));   // インクのびちゃっ
+      if (cells > 1500) tone(base / 4, base / 8, 0.35, 'sine', 0.22);      // 大きいと低いどーん
+      const e = CLAIM_VOICES[kind](base, n, cells) + 0.04;
       // 模様ごとのひと飾り
-      const e = n * 0.055 + 0.04;
       if (pat === 'dots') [0, 4, 7, 12].forEach((k, i) => bell(base * 2 * Math.pow(2, k / 12), 0.05, e + i * 0.06));
       else if (pat === 'stripe' || pat === 'check') [0, 12, 0, 12].forEach((k, i) => tone(base * Math.pow(2, k / 12), 0, 0.04, 'square', 0.06, e + i * 0.045));
       else if (pat === 'swirl') tone(base, base * 4, 0.45, 'triangle', 0.07, e);
@@ -4210,6 +4287,7 @@ const OPT_ITEMS = [
   { k:'bgm',   label:'BGM音量',  min:0, max:10 },
   { k:'sfx',   label:'効果音量', min:0, max:10 },
   { k:'music', label:'BGM',      vals:MUSIC_KEYS, str:true },
+  { k:'claimSnd', label:'塗る音', vals:CLAIM_SND_OPTS, str:true },
   { k:'diff',  label:'難易度',   vals:DIFF_KEYS, str:true },
   { k:'lives', label:'残機',     min:1, max:5 },
   { k:'theme', label:'テーマ',   vals:THEMES.map(t => t.name).concat(['AUTO']) },
@@ -4244,6 +4322,7 @@ function adjustOpt(dir) {
     settings[it.k] = it.str ? it.vals[i] : i;
     if (it.k === 'theme') applyTheme();
     if (it.k === 'ink') { nextInk(); if (grid) redrawField(); }
+    if (it.k === 'claimSnd') { Snd.ensure(); Snd.claim(600, true, 'grad'); }   // 試聴
     if (it.k === 'music') Bgm.play(settings.music === 'AUTO' ? 'title' : MUSIC_SONG[settings.music]); // 試聴
   } else {
     settings[it.k] = clamp((settings[it.k] | 0) + dir, it.min, it.max);
@@ -5365,7 +5444,7 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 200, dy = 31;
+    const y0 = 198, dy = 29;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
       optRects.push({ x: 76, y: y - 22, w: W - 152, h: 30, idx: i });

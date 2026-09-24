@@ -1359,5 +1359,19 @@ buddiesOn = true;
   assert('アースの曲がある', BGMDATA.earth && BGMDATA.earth.tracks.every(tr => tr.t !== 'n' || tr.s.length === 64) && CONFIG.SURF.SPHERE.music === 'earth');
 }
 
+
+// ---- 89) 塗る音のいろいろ ----
+{
+  assert('塗る音は6種類', Snd.claimVoices.join() === 'classic,arp,shepard,harp,bell,stab');
+  settings.claimSnd = 'HARP'; assert('固定: HARP', Snd.pickClaimSnd() === 'harp');
+  settings.claimSnd = 'MIX'; combo = 2; assert('MIX: コンボ中は無限音階', Snd.pickClaimSnd() === 'shepard'); combo = 0;
+  const seen = new Set(); for (let i = 0; i < 60; i++) seen.add(Snd.pickClaimSnd());
+  assert('MIX: いろいろ鳴る', seen.size >= 5, [...seen]);
+  let err = null; try { for (const k of CLAIM_SND_OPTS) { settings.claimSnd = k; Snd.claim(800, true, 'dots'); } } catch (e) { err = e.stack; }
+  assert('どの塗る音でも例外なし(音声なし環境)', !err, err);
+  settings.claimSnd = 'MIX';
+  assert('OPTIONSに「塗る音」', OPT_ITEMS.some(it => it.k === 'claimSnd'));
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
