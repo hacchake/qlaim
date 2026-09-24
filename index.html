@@ -3673,7 +3673,11 @@ function renderOverlay() {
 
   if (state === 'over') {
     const r = rankOf(modeKey());
-    panel(90, 250, W - 180, 330);
+    panel(90, 250, W - 180, 370);
+    shareRect = { x: W / 2 - 80, y: 586, w: 160, h: 26 };
+    ctx.strokeStyle = '#3a6a7a'; ctx.lineWidth = 1.5; ctx.strokeRect(shareRect.x, shareRect.y, shareRect.w, shareRect.h);
+    ctx.fillStyle = '#9dffea'; ctx.font = "bold 13px 'Courier New', monospace";
+    ctx.fillText('結果をシェア [S]', W / 2, 604);
     ctx.fillStyle = '#ff5c8a';
     ctx.font = "bold 34px 'Courier New', monospace";
     ctx.fillText('GAME OVER', W / 2, 300);
@@ -3742,6 +3746,7 @@ function onKeyDown(e) {
   Snd.ensure();
 
   if ((k === 'c' || k === 'C') && state !== 'entry') { saveShot(); e.preventDefault(); return; }
+  if ((k === 's' || k === 'S') && state === 'over') { shareResult(); e.preventDefault(); return; }
   if ((k === 'm' || k === 'M') && state !== 'entry') {   // 名前入力中は文字として使う
     const m = Snd.toggleMute();
     floats.push({ x: W / 2, y: H / 2, txt: m ? 'MUTE' : 'SOUND ON', t: 1.0, col: '#cdd8ff' });
@@ -3824,6 +3829,24 @@ function onKeyUp(e) {
 }
 window.addEventListener('keyup', onKeyUp);
 window.addEventListener('blur', () => { if (state === 'play' || state === 'ready') doPause(); });
+
+// 結果の共有: スマホは共有メニュー、PC はクリップボードへ
+const SHARE_URL = 'https://hacchake.github.io/qlaim/';
+function resultText() {
+  return 'QLAIM ─ ' + modeLabel(settings.mode) + '\nSCORE ' + score + '  AREA ' + level
+       + (continues ? '  (CONT×' + continues + ')' : '') + '\n' + SHARE_URL;
+}
+let shareRect = null;
+function shareResult() {
+  const text = resultText();
+  const done = msg => { floats.push({ x: W / 2, y: 230, txt: msg, t: 1.6, col: '#9dffea' }); Snd.select(); };
+  try {
+    if (typeof navigator !== 'undefined' && navigator.share) { navigator.share({ text }).catch(() => {}); return 'share'; }
+    if (typeof navigator !== 'undefined' && navigator.clipboard) { navigator.clipboard.writeText(text).then(() => done('結果をコピーしました'), () => done('コピーできませんでした')); return 'copy'; }
+  } catch (e) {}
+  done('この環境では共有できません');
+  return 'none';
+}
 
 // スクリーンショット: いまの画面を PNG で保存
 function saveShot() {
@@ -3928,6 +3951,7 @@ cv.addEventListener('pointerdown', e => {
     if (row) pauseChoose(row.idx);
     return;
   }
+  if (state === 'over' && inRect(p, shareRect)) { shareResult(); return; }
   onAction(); // clear / over
 });
 

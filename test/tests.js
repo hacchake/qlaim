@@ -841,5 +841,16 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   settings.theme = 0; applyTheme();
 }
 
+
+// ---- 59) 結果の共有 ----
+{
+  settings.mode = 'KLEIN'; score = 3210; level = 4; continues = 1;
+  const tx = resultText();
+  assert('共有の文章に盤面・スコア・URL', tx.includes('クラインの壺') && tx.includes('3210') && tx.includes('AREA 4') && tx.includes(SHARE_URL), tx);
+  assert('共有できない環境でも落ちない', shareResult() === 'none');
+  setState('over'); stTimer = 20; let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('ゲームオーバー画面(共有ボタン)の描画', !err && shareRect && shareRect.w > 0, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
