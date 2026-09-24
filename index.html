@@ -3006,7 +3006,8 @@ function drawPlayer(t) {
   ctx.shadowBlur = player.drawing || starT > 0 ? 16 : 9;
   drawClawd(cx, cy, s, {
     moving: moving || cheer, walkF: Math.floor(blinkT * 12) & 1, drawing: player.drawing || cheer,
-    look: player.look, blink: (blinkT % 3.3) < 0.12,
+    // 3秒止まっているときょろきょろ
+    look: blinkT - player.moveT > 3 ? (Math.sin(blinkT * 1.7) > 0 ? 1 : -1) : player.look, blink: (blinkT % 3.3) < 0.12,
   });
   ctx.shadowBlur = 0;
   drawSpeech(cx, cy - 4 * s);
