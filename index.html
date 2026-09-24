@@ -336,6 +336,12 @@ const THEMES = [
     fast:['#3a3a3a','#474747','#2f2f2f','#525252'],
     slow:['#8a6a2a','#9c7a30','#7a5c22','#a8863a'],
     trailF:'#e8e8e8', trailS:'#ffcf7a', qixHue:null, qixSat0:true },
+  // INK: インクで塗り広げるテーマ。ふつう(遅い)はClawdのオレンジ、Zで速いときはピンク
+  { name:'INK', bgOuter:'#232842', bg:'#0f1222', field:'#1b1f33', hud:'#12152a',
+    line:'#8d93bd', accent:'#ff8a3d',
+    fast:['#ff4fa3','#ff62b3','#f23f98','#ff78c0'],
+    slow:['#ff8a1f','#ff9d42','#ff7a0a','#ffae57'],
+    trailF:'#ff62b3', trailS:'#ff9d42', qixHue:[170,250], qixSat0:false },
   // anim があるテーマは占領色がゆっくり移ろう(hue: 始まりの色相, speed: 度/秒, spread: 色の幅)
   { name:'PRISM', bgOuter:'#1a0f2e', bg:'#05030c', field:'#06040e', hud:'#0a0716',
     line:'#ffffff', accent:'#c49bff', anim:{ hue:200, speed:22, spread:100 },
@@ -607,7 +613,7 @@ settings.theme = clamp(settings.theme | 0, 0, THEMES.length);   // THEMES.length
 function saveSettings() { store.set('qlaim.settings', settings); }
 function diff() { return DIFFS[settings.diff]; }
 // AUTO(settings.theme === THEMES.length)のときは盤面の種類で配色が変わる
-const AUTO_THEME = { PLANE:'NEON', TETRA:'PRISM', CUBE:'PRISM', OCTA:'PRISM', DODECA:'PRISM', ICOSA:'PRISM', SPHERE:'PRISM',
+const AUTO_THEME = { PLANE:'INK', TETRA:'PRISM', CUBE:'INK', OCTA:'PRISM', DODECA:'PRISM', ICOSA:'PRISM', SPHERE:'INK',
   TRUNC_TETRA:'AURORA', TRUNC_CUBE:'AURORA', TRUNC_OCTA:'AURORA', TRUNC_DODECA:'AURORA', TRUNC_ICOSA:'AURORA',
   CUBOCTA:'AURORA', ICOSIDODECA:'AURORA', RHOMBICUBOCTA:'AURORA', STELLA:'VAPOR', SSD:'VAPOR', GSD:'VAPOR',
   TORUS:'CRT-G', MOBIUS:'CRT-G', KNOT:'CRT-G', KLEIN:'PRISM' };
@@ -1757,7 +1763,7 @@ function tickTheme(dt) {
 function buildColors() {
   const t = theme();
   themePal = themePalette(t);
-  themePalD = themePal.map(c => shade(c, 0.68)); // 年輪模様の暗いほう
+  themePalD = themePal.map(c => shade(c, 0.9));  // 年輪模様の暗いほう(ごく控えめ)
   // 立体面用: [色の種類 × 陰影段階] の色文字列表
   const fld = rgbOf(t.field), acc = rgbOf(t.accent);
   const bases = [
@@ -1765,7 +1771,7 @@ function buildColors() {
     mixRgb([0,0,0], acc, 0.30),                       // 2 クリア時の封鎖色
     rgbOf(t.line), rgbOf(t.trailF), rgbOf(t.trailS),  // 3 線 / 4,5 軌跡
     mixRgb([0,0,0], acc, 0.42),                       // 6 HOME
-  ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.66)),
+  ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.88)),
            [mixRgb([255,255,255], acc, 0.25)]);            // 23 塗りの波が通った瞬間の光
   col3D = [];
   bases.forEach((b, ci) => {
@@ -1854,18 +1860,47 @@ function initLevel(lv) {
 function redrawField() {
   if (surf.is3D) return; // 立体面は毎フレーム描く
   const t = theme();
+  // 床: うっすらタイル目地
   fctx.fillStyle = t.field;
   fctx.fillRect(0, 0, fieldC.width, fieldC.height);
-  for (let y = 0; y < GH; y++) {
-    for (let x = 0; x < GW; x++) {
-      const i = idx(x, y);
-      if (grid[i] === WALL) {
-        const c = colA[i];
-        fctx.fillStyle = c ? (ringA[i] ? themePalD[c - 1] : themePal[c - 1]) : t.line;
-        fctx.fillRect(x * CS, y * CS, CS, CS);
-      }
+  fctx.strokeStyle = 'rgba(255,255,255,0.035)'; fctx.lineWidth = 1;
+  fctx.beginPath();
+  for (let x = 0; x <= fieldC.width; x += 32) { fctx.moveTo(x + 0.5, 0); fctx.lineTo(x + 0.5, fieldC.height); }
+  for (let y = 0; y <= fieldC.height; y += 32) { fctx.moveTo(0, y + 0.5); fctx.lineTo(fieldC.width, y + 0.5); }
+  fctx.stroke();
+  // 陣地: セルごとに少し大きめの円を重ねる → ふちが丸くインクっぽくなる。色ごとにまとめて塗る
+  const paths = {}, add = (key, x, y, r) => { (paths[key] = paths[key] || new Path2D()).moveTo(x + r, y); paths[key].arc(x, y, r, 0, Math.PI * 2); };
+  const gloss = new Path2D(), dim = new Path2D(), lit = new Path2D();
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    const i = idx(x, y);
+    if (grid[i] !== WALL) continue;
+    const c = colA[i], cx = x * CS + CS / 2, cy = y * CS + CS / 2;
+    if (!c || c > 8) add('line', cx, cy, CS * 0.62);
+    else {
+      add((ringA[i] ? 'd' : 'n') + c, cx, cy, CS * 0.98);
+      // インクのムラ(濃いしみ・薄いしみ)と、つやの点
+      const hsh = (i * 2654435761) >>> 0;
+      if (hsh % 41 === 0) { dim.moveTo(cx + CS * 2.4, cy); dim.arc(cx, cy, CS * 2.4, 0, Math.PI * 2); }
+      else if (hsh % 59 === 0) { lit.moveTo(cx + CS * 1.8, cy); lit.arc(cx, cy, CS * 1.8, 0, Math.PI * 2); }
+      if (hsh % 173 === 0) { gloss.moveTo(cx + 1.6, cy - 1); gloss.arc(cx, cy - 1, 1.6, 0, Math.PI * 2); }
     }
   }
+  for (const key in paths) {
+    if (key === 'line') continue;
+    const c = +key.slice(1);
+    fctx.fillStyle = key[0] === 'd' ? themePalD[c - 1] : themePal[c - 1];
+    fctx.fill(paths[key]);
+  }
+  // ムラは陣地の上だけに(陣地の形で切り抜く)
+  fctx.save();
+  const clip = new Path2D();
+  for (const key in paths) if (key !== 'line') clip.addPath(paths[key]);
+  fctx.clip(clip);
+  fctx.fillStyle = 'rgba(0,0,0,0.10)'; fctx.fill(dim);
+  fctx.fillStyle = 'rgba(255,255,255,0.07)'; fctx.fill(lit);
+  fctx.restore();
+  fctx.fillStyle = 'rgba(255,255,255,0.35)'; fctx.fill(gloss);
+  if (paths.line) { fctx.fillStyle = t.line; fctx.fill(paths.line); }
 }
 
 // クリア時: 残った空き地を薄く塗って「封鎖」感を出す(判定には影響しない。立体面は描画側で処理)
@@ -2031,10 +2066,10 @@ function enterTrail(n) {
   player.prev = player.c; player.c = n;
   if (held.fast) { player.usedFast = true; areaFast = true; }
   Snd.updateDraw(trail.length, !player.usedFast);
-  // きらめき: 描いた跡に光の粒をこぼす
+  // インクのしずく: ローラーからはねる
   if (trail.length % 2 === 0) {
     const p = surf.screenOf(n), col = player.usedFast ? theme().trailF : theme().trailS;
-    particles.push({ x: p.x, y: p.y, vx: rand(-18, 18), vy: rand(-30, -8), t: rand(0.3, 0.6), col });
+    particles.push({ x: p.x, y: p.y, vx: rand(-40, 40), vy: rand(-60, -20), t: rand(0.35, 0.6), col, ink: true, r: rand(1.8, 3.2) });
   }
 }
 
@@ -2196,20 +2231,34 @@ function crushSeekers() {
     Snd.split();
   }
 }
-// 見た目: 脈打つ紫の玉に、自機のほうを見る目
-function drawSeeker(k, faint) {
-  if (k.stun > 0 && Math.floor(blinkT * 10) & 1) return;   // しびれ中は点滅
-  const p = surf.screenOf(k.c), q = surf.screenOf(player.c), r = 7 + Math.sin(k.ph * 7) * 1.5;
-  ctx.globalAlpha = faint ? 0.3 : 1;
-  ctx.shadowColor = '#ff5cf0'; ctx.shadowBlur = 14;
-  ctx.fillStyle = '#c231b8';
-  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
-  ctx.shadowBlur = 0;
-  const a = Math.atan2(q.y - p.y, q.x - p.x);
+// SEEKER = オイカケ: 紫のしずく形スライム。大きな一つ目で自機をにらむ。ぷるぷる揺れる。しびれ中は半透明+目がぐるぐる
+function drawSeeker(k, faint, at) {   // at: 描く位置(省略時はセルの位置)
+  const p = at || surf.screenOf(k.c), q = at ? { x: p.x + 10, y: p.y } : surf.screenOf(player.c);
+  const sq = Math.sin(k.ph * 5) * 0.08, x = p.x, y = p.y + 2, R = 9;
+  ctx.globalAlpha = (faint ? 0.3 : 1) * (k.stun > 0 ? 0.5 : 1);
+  // しずく形の体(上がとがる)。横に少し伸び縮み
+  const body = new Path2D();
+  body.moveTo(x, y - R * 2.1);
+  body.bezierCurveTo(x + R * 0.6, y - R * 1.3, x + R * (1.15 + sq), y - R * 0.4, x + R * (1.05 + sq), y + R * 0.3);
+  body.bezierCurveTo(x + R * 0.9, y + R * 1.05, x - R * 0.9, y + R * 1.05, x - R * (1.05 + sq), y + R * 0.3);
+  body.bezierCurveTo(x - R * (1.15 + sq), y - R * 0.4, x - R * 0.6, y - R * 1.3, x, y - R * 2.1);
+  ctx.lineWidth = 3; ctx.strokeStyle = '#2a0d33'; ctx.stroke(body);
+  ctx.fillStyle = '#a64dff'; ctx.fill(body);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath(); ctx.ellipse(x - 4, y - R * 0.9, 2, 3.2, -0.4, 0, Math.PI * 2); ctx.fill();
+  // 大きな一つ目
+  const a = Math.atan2(q.y - y, q.x - x), ox = Math.cos(a) * 2, oy = Math.sin(a) * 2;
   ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 2, p.y + Math.sin(a) * 2, 3.2, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#200018';
-  ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 3.2, p.y + Math.sin(a) * 3.2, 1.6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y - 1, 4.6, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#2a0d33'; ctx.lineWidth = 1.2; ctx.stroke();
+  if (k.stun > 0) {                       // しびれ: ぐるぐる目
+    ctx.beginPath(); ctx.arc(x, y - 1, 2.6, k.ph * 8, k.ph * 8 + 4.8); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#2a0d33';
+    ctx.beginPath(); ctx.arc(x + ox, y - 1 + oy, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x + ox - 0.8, y - 1.8 + oy, 0.7, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.globalAlpha = 1;
 }
 function drawSeekers() {
@@ -2343,7 +2392,7 @@ function updateQix(q, dt) {
   if (!(q.dash > 0)) surf.qixTurn(q, (Math.random() - 0.5) * 4 * dt);
   surf.qixMove(q, q.spd * dt * enemySlow() * rate);
   q.arm += 3.4 * dt;
-  q.hue = (q.hue + 140 * dt) % 360;
+  q.hue = (q.hue + 12 * dt) % 360;     // 色はゆっくり移ろうだけ(チカチカさせない)
   q.segT -= dt;
   if (q.segT <= 0) {
     q.segT = 0.033;
@@ -2576,14 +2625,15 @@ function drawHelp(t) {
   const fake = { c: 7, wait: 0, hist: [], ph: blinkT, stun: 0 };
   row(162, (x, y) => drawClawd(x, y, 1.8, { moving: true, walkF: Math.floor(blinkT * 8) & 1 }), 'Clawd', 'あなた。空き地へ進むと線を引く(Zで速く)');
   row(206, (x, y) => {
-    ctx.strokeStyle = qixStroke(blinkT * 90, 60, 1); ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(x - 12, y + 8); ctx.lineTo(x + 12, y - 8); ctx.stroke();
-  }, 'QIX', '空き地を動く。描きかけの線に触れるとミス');
-  row(250, (x, y) => drawSparx(x, y, fake), 'SPARX', '線の上を走る赤い火花。触れるとミス');
-  row(294, (x, y) => {
-    ctx.fillStyle = '#c231b8'; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + 2, y, 3, 0, Math.PI * 2); ctx.fill();
-  }, 'SEEKER', 'AREA 4〜。線を追ってくる。囲めば倒せる');
+    ctx.fillStyle = qixStroke(200, 62, 1);
+    ctx.beginPath(); ctx.ellipse(x, y, 11, 9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = qixStroke(200, 62, 1); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x - 8, y + 6); ctx.quadraticCurveTo(x - 14, y + 12, x - 18, y + 10);
+    ctx.moveTo(x + 8, y + 6); ctx.quadraticCurveTo(x + 14, y + 12, x + 18, y + 10); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x - 4, y - 1, 2.6, 0, Math.PI * 2); ctx.arc(x + 4, y - 1, 2.6, 0, Math.PI * 2); ctx.fill();
+  }, 'ヌメリン', '(QIX) 空き地をただようクラゲ。触手が描きかけの線に触れるとミス');
+  row(250, (x, y) => drawSparx(x, y, fake), 'バチッコ', '(SPARX) 線の上を走る火の玉。触れるとミス');
+  row(294, (x, y) => drawSeeker({ c: 0, ph: blinkT, stun: 0 }, false, { x, y: y + 4 }), 'オイカケ', '(SEEKER) AREA 4〜。線を追ってくる一つ目スライム。囲めば倒せる');
   row(338, (x, y) => { ctx.fillStyle = '#ff9e3d'; ctx.fillRect(x - 2, y - 2, 5, 5); }, '導火線', '描く途中で止まると火がつき、線をさかのぼる');
   let y = 392;
   ctx.fillStyle = '#ffd76b'; ctx.font = "bold 14px 'Courier New', monospace";
@@ -2620,7 +2670,7 @@ function drawEnding(t) {
   ctx.fillRect(0, FIELD_Y, W, H - FIELD_Y);
   const lines = ['QLAIM', '', '全' + CONFIG.TOUR.length + '面 制覇!', 'おめでとう!', '', '── 出演 ──']
     .concat(CONFIG.TOUR.map(k => CONFIG.SURF[k].label))
-    .concat(['', 'QIX', 'SPARX', 'SEEKER', '', '── 主演 ──', 'Clawd', '', 'SCORE ' + score, '', 'Z で2周目へ']);
+    .concat(['', 'ヌメリン', 'バチッコ', 'オイカケ', '', '── 主演 ──', 'Clawd', '', 'SCORE ' + score, '', 'Z で2周目へ']);
   const y0 = H - stTimer * 42;
   ctx.textAlign = 'center';
   lines.forEach((ln, i) => {
@@ -2895,51 +2945,60 @@ function drawDiamond(px, py, r) {
   ctx.moveTo(px, py - r); ctx.lineTo(px + r, py); ctx.lineTo(px, py + r); ctx.lineTo(px - r, py);
   ctx.closePath(); ctx.fill();
 }
-// SPARX: 白い線や黄色い線の上でも目立つよう、暗い縁取り + 赤い火花 + 脈打つ輪 + 通った跡の尾
+// SPARX = バチッコ: 線の上を走る火の玉。暗いふちどりの丸い体に、怒った目と揺れる炎の髪。点滅はしない
 function drawSparx(px, py, s) {
-  if (s.wait > 0 && Math.floor(blinkT * 6) % 2) return; // 出現待ち: 点滅
-  // 尾(直前に通ったセル)
-  if (s.hist && s.hist.length) {
+  const waiting = s.wait > 0;
+  ctx.globalAlpha = waiting ? 0.4 : 1;
+  // 走った跡の炎の尾
+  if (s.hist && s.hist.length && !waiting) {
     ctx.lineCap = 'round';
     let prev = { x: px, y: py };
     s.hist.forEach((c, i) => {
       if (surf.is3D && !visA[c]) return;
       const q = surf.screenOf(c);
-      if (Math.hypot(q.x - prev.x, q.y - prev.y) > 40) return;   // 貼り合わせの縁などで飛んだら描かない
-      ctx.strokeStyle = `rgba(255,90,40,${0.55 * (1 - i / s.hist.length)})`;
-      ctx.lineWidth = 5 - i * 0.7;
+      if (Math.hypot(q.x - prev.x, q.y - prev.y) > 40) return;
+      ctx.strokeStyle = `rgba(255,120,40,${0.5 * (1 - i / s.hist.length)})`;
+      ctx.lineWidth = 6 - i;
       ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(q.x, q.y); ctx.stroke();
       prev = q;
     });
   }
-  // 暗い縁取り(下の線から浮かせる)
-  ctx.fillStyle = 'rgba(0,0,0,0.75)';
-  ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.fill();
-  // 脈打つ輪
-  const pr = 12 + Math.sin(blinkT * 12 + s.c) * 2;
-  ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.stroke();
-  // トゲトゲの火花(回転しながらちらつく)
-  const flick = Math.sin(blinkT * 30 + s.c) > 0, rot = blinkT * 9 + s.c;
-  ctx.shadowColor = '#ff5a28'; ctx.shadowBlur = 10;
-  ctx.fillStyle = flick ? '#ff5a28' : '#ffb02e';
-  ctx.beginPath();
-  for (let k = 0; k < 16; k++) {
-    const a = rot + k * Math.PI / 8, r = k & 1 ? 3.5 : 9;
-    if (k === 0) ctx.moveTo(px + Math.cos(a) * r, py + Math.sin(a) * r);
-    else ctx.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r);
+  const R = 8;
+  // 炎の髪(ゆっくり揺れる)
+  ctx.fillStyle = '#ffb02e';
+  for (let k = -2; k <= 2; k++) {
+    const a = -Math.PI / 2 + k * 0.45 + Math.sin(blinkT * 5 + k + s.c) * 0.12, h = R + 6 - Math.abs(k) * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(px + Math.cos(a - 0.3) * R * 0.8, py + Math.sin(a - 0.3) * R * 0.8);
+    ctx.lineTo(px + Math.cos(a) * h, py + Math.sin(a) * h);
+    ctx.lineTo(px + Math.cos(a + 0.3) * R * 0.8, py + Math.sin(a + 0.3) * R * 0.8);
+    ctx.fill();
   }
-  ctx.closePath(); ctx.fill();
-  ctx.shadowBlur = 0;
+  // 体
+  ctx.fillStyle = '#1a0a08';
+  ctx.beginPath(); ctx.arc(px, py, R + 2, 0, Math.PI * 2); ctx.fill();
+  const g = ctx.createRadialGradient(px - 2, py - 3, 1, px, py, R);
+  g.addColorStop(0, '#ffcf6b'); g.addColorStop(1, '#ff4b1f');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
+  // 怒った目
   ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(px - 3, py, 2.2, 0, Math.PI * 2); ctx.arc(px + 3, py, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1a0a08';
+  ctx.beginPath(); ctx.arc(px - 2.6, py + 0.4, 1.1, 0, Math.PI * 2); ctx.arc(px + 3.4, py + 0.4, 1.1, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#1a0a08'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(px - 5.5, py - 3.6); ctx.lineTo(px - 1.2, py - 2); ctx.moveTo(px + 5.5, py - 3.6); ctx.lineTo(px + 1.2, py - 2); ctx.stroke();
+  ctx.globalAlpha = 1;
 }
 function drawFuse(p) {
-  ctx.fillStyle = pick(['#ffdd55', '#ff7733', '#ff3311']);
-  const r = rand(3, 5);
-  ctx.fillRect(p.x - r / 2, p.y - r / 2, r, r);
-  ctx.fillStyle = '#ffdd55';
-  ctx.fillRect(p.x + rand(-5, 5), p.y + rand(-5, 5), 2, 2);
+  // 導火線の火: 小さな炎(色は固定、ゆっくり揺れる)
+  const r = 4 + Math.sin(blinkT * 6) * 0.8;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.beginPath(); ctx.arc(p.x, p.y, r + 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ff7a2a';
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffe07a';
+  ctx.beginPath(); ctx.arc(p.x, p.y - 1, r * 0.45, 0, Math.PI * 2); ctx.fill();
 }
 /* ---- 自機 Clawd(ドット絵) ----
    13×9 ドット。体・目・腕・4本脚。歩くと脚が交互に上がって体が弾み、
@@ -2982,8 +3041,26 @@ function drawClawd(cx, cy, s, o) {
   else if (o.blink) { px(4 + ex, 2, 1, 1); px(8 + ex, 2, 1, 1); }
   else { px(4 + ex, 1, 1, 2); px(8 + ex, 1, 1, 2); }
 }
+// ローラー: 進む向きの前に置き、線を引いている間はインク色になる
+function drawRoller(p, s, t) {
+  let dx = player.look, dy = 0;
+  if (player.prev >= 0) {
+    const q = surf.screenOf(player.prev), l = Math.hypot(p.x - q.x, p.y - q.y);
+    if (l > 0.5 && l < 60) { dx = (p.x - q.x) / l; dy = (p.y - q.y) / l; }
+  }
+  const col = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : '#c9c2b6';
+  const rx = p.x + dx * 7 * s, ry = p.y + dy * 7 * s;   // ローラーの中心
+  const px = -dy, py = dx, half = 5.5 * s;               // ローラーの軸(進む向きに直角)
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#3b3440'; ctx.lineWidth = 1.6 * s * 0.6;   // 柄
+  ctx.beginPath(); ctx.moveTo(p.x, p.y - 2 * s); ctx.lineTo(rx, ry); ctx.stroke();
+  ctx.strokeStyle = '#2a2230'; ctx.lineWidth = 4.2 * s;           // ローラーのふち
+  ctx.beginPath(); ctx.moveTo(rx - px * half, ry - py * half); ctx.lineTo(rx + px * half, ry + py * half); ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 3 * s;                   // ローラー本体
+  ctx.beginPath(); ctx.moveTo(rx - px * half, ry - py * half); ctx.lineTo(rx + px * half, ry + py * half); ctx.stroke();
+}
 function drawPlayer(t) {
-  const p = surf.screenOf(player.c), s = surf.is3D ? 2 : 1.6;
+  const p = surf.screenOf(player.c), s = 2;
   if (deathTimer > 0) { // くるくる回って小さくなる
     ctx.save();
     ctx.globalAlpha = clamp(deathTimer / 1.2, 0, 1);
@@ -2994,7 +3071,7 @@ function drawPlayer(t) {
     drawSpeech(p.x, p.y - 4 * s);
     return;
   }
-  if (player.invuln > 0 && (Math.floor(blinkT * 10) % 2 === 0)) return;
+  const ghost = player.invuln > 0;          // 復活直後は点滅させず半透明に
   const moving = blinkT - player.moveT < 0.18;
   const cheer = state === 'clear';                    // クリア: ぴょんぴょん跳ねて腕を振る
   const jump = cheer ? Math.abs(Math.sin(stTimer * 9)) * 5 * s : 0;
@@ -3008,14 +3085,17 @@ function drawPlayer(t) {
     ctx.beginPath(); ctx.arc(cx, cy, 11 * s, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1;
   }
-  ctx.shadowColor = starT > 0 ? ITEMS.star.col : glow;
-  ctx.shadowBlur = player.drawing || starT > 0 ? 16 : 9;
+  if (ghost) ctx.globalAlpha = 0.45;
+  drawRoller(p, s, t);
+  ctx.shadowColor = starT > 0 ? ITEMS.star.col : 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = starT > 0 ? 14 : 4;
   drawClawd(cx, cy, s, {
     moving: moving || cheer, walkF: Math.floor(blinkT * 12) & 1, drawing: player.drawing || cheer,
     // 3秒止まっているときょろきょろ
     look: blinkT - player.moveT > 3 ? (Math.sin(blinkT * 1.7) > 0 ? 1 : -1) : player.look, blink: (blinkT % 3.3) < 0.12,
   });
   ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
   drawSpeech(cx, cy - 4 * s);
   // 敵が近いときは頭に「!」
   if (danger > 0 && speech.t <= 0 && Math.floor(blinkT * 8) & 1) {
@@ -3035,9 +3115,9 @@ function drawPlayer(t) {
 // アイテム: 色の光る玉に記号。消える前は点滅
 function drawItem(it, p, faint) {
   const I = ITEMS[it.k], left = CONFIG.ITEM_LIFE - it.t;
-  if (left < 3 && Math.floor(blinkT * 8) & 1) return;
+  const fade = left < 3 ? left / 3 : 1;     // 消えかけは薄くなる(点滅しない)
   const r = 10 + Math.sin(blinkT * 5 + it.c) * 1.5;
-  ctx.globalAlpha = faint ? 0.3 : 1;
+  ctx.globalAlpha = (faint ? 0.3 : 1) * fade;
   ctx.globalCompositeOperation = 'lighter';
   const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.2);
   g.addColorStop(0, I.col); g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -3045,6 +3125,7 @@ function drawItem(it, p, faint) {
   ctx.beginPath(); ctx.arc(p.x, p.y, r * 2.2, 0, Math.PI * 2); ctx.fill();
   ctx.globalCompositeOperation = 'source-over';
   ctx.strokeStyle = I.col; ctx.lineWidth = 2;
+  ctx.globalAlpha = (faint ? 0.3 : 1) * fade;
   ctx.setLineDash([4, 4]); ctx.lineDashOffset = -blinkT * 20;   // まわる破線の輪
   ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, 0, Math.PI * 2); ctx.stroke();
   ctx.setLineDash([]);
@@ -3081,7 +3162,7 @@ function calcDanger() {
 // 危険なときは画面のふちが赤く脈打つ
 function drawDangerEdge() {
   if (danger <= 0) return;
-  const a = danger * (0.25 + 0.2 * Math.sin(blinkT * 14));
+  const a = danger * 0.3;   // 脈打たせない
   const g = ctx.createRadialGradient(W / 2, (FIELD_Y + H) / 2, 260, W / 2, (FIELD_Y + H) / 2, 520);
   g.addColorStop(0, 'rgba(255,40,40,0)');
   g.addColorStop(1, `rgba(255,40,40,${a})`);
@@ -3192,27 +3273,23 @@ function render() {
   ctx.fillRect(-8, -8, W + 16, H + 16);
   if (surf.is3D) render3D(t);
   else render2D(t);
-  // キックに合わせてほんのり明るく
-  const beat = state === 'play' || state === 'title' ? Bgm.pulse() : 0;
-  if (beat > 0.01) {
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.05 * beat;
-    ctx.fillStyle = t.accent;
-    ctx.fillRect(0, FIELD_Y, W, H - FIELD_Y);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-  }
-  calcDanger();
-  drawDangerEdge();
   drawItems();
   drawSeekers();
   if (surf.is3D && !['title', 'options', 'achv', 'stats', 'help', 'ending'].includes(state)) drawBackView(t);
   if (state === 'play' || state === 'ready' || state === 'pause') drawStatus();
   if (tutorStep >= 0 && (state === 'play' || state === 'ready')) drawTutor(t);
 
-  // パーティクルと光の輪(加算合成で光らせる)
+  // インクのしずく(ふつうの合成)
+  for (const p of particles) {
+    if (!p.ink) continue;
+    ctx.globalAlpha = Math.min(1, p.t * 3);
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  }
+  // パーティクルと光の輪(加算合成)
   ctx.globalCompositeOperation = 'lighter';
   for (const p of particles) {
+    if (p.ink) continue;
     ctx.globalAlpha = Math.min(1, p.t * 2);
     ctx.fillStyle = p.col;
     ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
@@ -3268,7 +3345,7 @@ function drawBloom() {
 function render2D(t) {
   ctx.drawImage(fieldC, 0, FIELD_Y);
 
-  // 塗りの波: まだ届いていないセルは空き地のまま、届いた瞬間に白く光る
+  // 塗りの波: まだ届いていないセルは空き地のまま(波が届くと色が付く)
   if (waveUntil > blinkT) {
     const now = blinkT, hide = new Path2D(), flash = new Path2D();
     for (let i = 0; i < surf.N; i++) {
@@ -3277,20 +3354,10 @@ function render2D(t) {
       const x = (i % GW) * CS, y = FIELD_Y + ((i / GW) | 0) * CS;
       if (ca > now) hide.rect(x, y, CS, CS); else flash.rect(x, y, CS, CS);
     }
-    ctx.fillStyle = t.field; ctx.fill(hide);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill(flash);
+    ctx.fillStyle = t.field; ctx.fill(hide);   // 白く光らせることはしない
   }
 
-  // 軌跡
-  if (trail.length) {
-    const pulse = 0.75 + 0.25 * Math.sin(blinkT * 12);
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle = player.usedFast ? t.trailF : t.trailS;
-    for (const c of trail) ctx.fillRect((c % GW) * CS, FIELD_Y + ((c / GW) | 0) * CS, CS, CS);
-    ctx.globalAlpha = 1;
-  }
-
-  drawTrailGlow(t);
+  drawInkTrail(t);
 
   // 導火線
   if (fuse.lit && player.drawing && trail.length)
@@ -3301,29 +3368,89 @@ function render2D(t) {
 
   drawPlayer(t);
 
-  // QIX(フィールド内にクリップ)
+  // QIX = ヌメリン(フィールド内にクリップ)
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, FIELD_Y, W, H - FIELD_Y);
   ctx.clip();
-  ctx.globalCompositeOperation = 'lighter';
-  drawQixRibbons();
-  for (const q of qixes) {
-    for (let i = 0; i < q.segs.length; i++) {
-      const s = q.segs[i];
-      const al = (i + 1) / q.segs.length;
-      const last = i === q.segs.length - 1;
-      ctx.strokeStyle = q.warn && Math.floor(blinkT * 16) & 1 ? '#ffffff' : qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
-      ctx.lineWidth = last ? 3 : 2;
-      if (last) { ctx.shadowColor = qixStroke(s.h, 60, 0.9); ctx.shadowBlur = 8; }
-      ctx.beginPath();
-      ctx.moveTo(s.x1 * CS, FIELD_Y + s.y1 * CS);
-      ctx.lineTo(s.x2 * CS, FIELD_Y + s.y2 * CS);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+  for (const q of qixes) drawNumerin(q, false);
+  ctx.restore();
+}
+
+/* ---- QIX = ヌメリン: 空き地をただようクラゲ。当たり判定の腕を、うねる2本の触手として描く ---- */
+// 触手の点列(画面座標)。平面は腕の両端、立体は腕に沿った点を投影
+function qixTentacles(q) {
+  const sg = q.segs[q.segs.length - 1];
+  if (!sg) return [];
+  const c0 = surf.qixScreen(q);
+  if (!surf.is3D) return [[c0, { x: sg.x1 * CS, y: FIELD_Y + sg.y1 * CS }], [c0, { x: sg.x2 * CS, y: FIELD_Y + sg.y2 * CS }]];
+  const S = surf, pts = sg.pts, mid = pts.length >> 1, arms = [[], []];
+  const push = (arr, p) => {
+    const c = S.ptCell(p);
+    if (!visA[c]) return false;
+    const w = S.world(p);
+    arr.push(projXYZ(w[0] * 1.015, w[1] * 1.015, w[2] * 1.015));
+    return true;
+  };
+  for (let i = mid; i >= 0; i--) if (!push(arms[0], pts[i])) break;
+  for (let i = mid; i < pts.length; i++) if (!push(arms[1], pts[i])) break;
+  return arms.filter(a => a.length > 1 && Math.hypot(a[a.length - 1].x - a[0].x, a[a.length - 1].y - a[0].y) < 200);
+}
+function drawNumerin(q, faint) {
+  const c = surf.qixScreen(q), col = qixStroke(q.hue, 62, 1), dark = qixStroke(q.hue, 22, 1);
+  ctx.globalAlpha = faint ? 0.3 : 1;
+  // 触手: 根元が太く先が細い、ゆっくりうねる線。突進の予告中は白っぽくなる(点滅はしない)
+  ctx.lineCap = 'round';
+  for (const arm of qixTentacles(q)) {
+    const a = arm[0], b = arm[arm.length - 1];
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
+    const N = 10, P = [];
+    for (let i = 0; i <= N; i++) {
+      const tt = i / N, src = arm[Math.min(arm.length - 1, Math.round(tt * (arm.length - 1)))];
+      const x = arm.length > 2 ? src.x : a.x + (b.x - a.x) * tt, y = arm.length > 2 ? src.y : a.y + (b.y - a.y) * tt;
+      const wig = Math.sin(tt * 5 - blinkT * 4 + q.arm) * 3.5 * tt;
+      P.push({ x: x + nx * wig, y: y + ny * wig });
+    }
+    for (const [lw, st] of [[1, dark], [0, q.warn ? '#f4f6ff' : col]]) {
+      ctx.strokeStyle = st;
+      for (let i = 0; i < N; i++) {
+        ctx.lineWidth = (6.5 - i * 0.5) + lw * 3;
+        ctx.beginPath(); ctx.moveTo(P[i].x, P[i].y); ctx.lineTo(P[i + 1].x, P[i + 1].y); ctx.stroke();
+      }
     }
   }
-  ctx.restore();
+  // 体: 半透明のかさ + ふち
+  const R = surf.is3D ? 13 : 12, pul = Math.sin(blinkT * 2.5 + q.arm) * 1.2;
+  // かさの下にゆれる短い足(3本)
+  ctx.strokeStyle = col; ctx.lineWidth = 2.2;
+  for (let k = -1; k <= 1; k++) {
+    const x0 = c.x + k * 5, y0 = c.y + R - 3;
+    ctx.beginPath(); ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x0 + Math.sin(blinkT * 3 + k) * 3, y0 + 5, x0 + Math.sin(blinkT * 3 + k + 1) * 2, y0 + 10);
+    ctx.stroke();
+  }
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.ellipse(c.x, c.y, R + 2.5 + pul, R + 1 - pul * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  const g = ctx.createRadialGradient(c.x - 4, c.y - 5, 2, c.x, c.y, R + 2);
+  g.addColorStop(0, qixStroke(q.hue, 85, 1)); g.addColorStop(1, col);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(c.x, c.y, R + pul, R - 1.5 - pul * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  // 目(自機を見る)と口
+  const pp = surf.screenOf(player.c), an = Math.atan2(pp.y - c.y, pp.x - c.x), ox = Math.cos(an) * 1.5, oy = Math.sin(an) * 1.5;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(c.x - 4.5, c.y - 1, 3.2, 0, Math.PI * 2); ctx.arc(c.x + 4.5, c.y - 1, 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#10121e';
+  ctx.beginPath(); ctx.arc(c.x - 4.5 + ox, c.y - 1 + oy, 1.7, 0, Math.PI * 2); ctx.arc(c.x + 4.5 + ox, c.y - 1 + oy, 1.7, 0, Math.PI * 2); ctx.fill();
+  if (q.warn) {           // 突進の予告: 怒り眉と「!」(点滅なし)
+    ctx.strokeStyle = '#10121e'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(c.x - 8, c.y - 6); ctx.lineTo(c.x - 2, c.y - 4); ctx.moveTo(c.x + 8, c.y - 6); ctx.lineTo(c.x + 2, c.y - 4); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.font = "bold 16px 'Courier New', monospace"; ctx.textAlign = 'center';
+    ctx.fillText('!', c.x, c.y - R - 6);
+  } else {
+    ctx.strokeStyle = '#10121e'; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.arc(c.x, c.y + 3.5, 2.2, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 /* ---- QIXのリボン: 隣り合う残像の間を半透明の帯で塗る ---- */
@@ -3353,24 +3480,25 @@ function drawQixRibbons() {
 }
 
 /* ---- 描いている線の光(平面・立体共通) ---- */
-function drawTrailGlow(t) {
+function drawInkTrail(t) {
+  // 描いている線: 太いインクの帯(暗いふち + インク + つや)。光らせたり点滅させたりはしない
   if (!trail.length) return;
-  const col = player.usedFast ? t.trailF : t.trailS;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14;
-  ctx.globalAlpha = 0.5 + 0.3 * Math.sin(blinkT * 10);
-  ctx.lineWidth = surf.is3D ? 4 : 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.beginPath();
+  const col = player.usedFast ? t.trailF : t.trailS, w = surf.is3D ? 9 : CS * 2;
+  const path = new Path2D();
   let pen = false, prev = null;
   for (const c of [trailStart].concat(trail, [player.c])) {
     if (c < 0 || (surf.is3D && !visA[c])) { pen = false; continue; }
     const p = surf.screenOf(c);
     if (pen && Math.hypot(p.x - prev.x, p.y - prev.y) > 60) pen = false;
-    if (pen) ctx.lineTo(p.x, p.y); else { ctx.moveTo(p.x, p.y); pen = true; }
+    if (pen) path.lineTo(p.x, p.y); else { path.moveTo(p.x, p.y); pen = true; }
     prev = p;
   }
-  ctx.stroke();
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = shade(col, 0.45); ctx.lineWidth = w + 3; ctx.stroke(path);
+  ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(path);
+  ctx.translate(-w * 0.18, -w * 0.18);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = w * 0.22; ctx.stroke(path);
   ctx.restore();
 }
 
@@ -3397,7 +3525,7 @@ function drawBackdrop() {
     const x = cx + (R[0] * d[0] + R[1] * d[1] + R[2] * d[2]) * 560;
     const y = cy - (R[3] * d[0] + R[4] * d[1] + R[5] * d[2]) * 560;
     const g = ctx.createRadialGradient(x, y, 0, x, y, nb.r);
-    g.addColorStop(0, `hsla(${(nb.h + animHue * 8) % 360}, 80%, 55%, ${0.12 + 0.12 * beat})`);
+    g.addColorStop(0, `hsla(${(nb.h + animHue * 8) % 360}, 80%, 55%, 0.12)`);
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
     ctx.fillRect(x - nb.r, y - nb.r, nb.r * 2, nb.r * 2);
@@ -3434,8 +3562,8 @@ function render3D(t) {
   // 球の後ろにうっすら光の輪
   if (S.sph) {
     const rs = rimRadius();
-    const g = ctx.createRadialGradient(cx, cy, rs * 0.9, cx, cy, rs * (1.12 + 0.05 * Bgm.pulse()));
-    g.addColorStop(0, shade(t.accent, 0.45 + 0.35 * Bgm.pulse()));
+    const g = ctx.createRadialGradient(cx, cy, rs * 0.9, cx, cy, rs * 1.12);
+    g.addColorStop(0, shade(t.accent, 0.45));
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(cx, cy, rs * 1.12, 0, Math.PI * 2); ctx.fill();
@@ -3475,7 +3603,6 @@ function render3D(t) {
     else {
       const ca = claimAt[c];
       if (ca > now) ci = par[c];                    // 塗りの波がまだ届いていない
-      else if (now - ca < 0.3) ci = FLASH_CI;       // 波が通った瞬間に光る
       else { const a = colA[c]; ci = a === 0 ? 3 : a === HOME_COL ? 6 : 6 + a + (ringA[c] ? 8 : 0); }
     }
     let lit = nx * lx + ny * ly + nz * lz;
@@ -3523,7 +3650,7 @@ function render3D(t) {
     ctx.globalAlpha = 1;
   }
 
-  drawTrailGlow(t);
+  drawInkTrail(t);
   // 導火線
   if (fuse.lit && player.drawing && trail.length) {
     const c = trail[Math.min(Math.floor(fuse.pos), trail.length - 1)];
@@ -3540,37 +3667,11 @@ function render3D(t) {
 
   drawPlayer(t);
 
-  // QIX: 腕は表面に沿った折れ線。見えている部分だけ、加算合成で光らせる
-  ctx.globalCompositeOperation = 'lighter';
-  drawQixRibbons();
+  // QIX = ヌメリン: 見えている側にいるときだけ体を描く(両面の形で向こう側なら薄く)
   for (const q of qixes) {
-    for (let i = 0; i < q.segs.length; i++) {
-      const s = q.segs[i];
-      const al = (i + 1) / q.segs.length;
-      const last = i === q.segs.length - 1;
-      ctx.strokeStyle = q.warn && Math.floor(blinkT * 16) & 1 ? '#ffffff' : qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
-      ctx.lineWidth = last ? 3 : 2;
-      if (last) { ctx.shadowColor = qixStroke(s.h, 60, 0.9); ctx.shadowBlur = 8; }
-      // 表側(near)と、両面の形で向こう側に透けて見える部分(far)を分けて描く
-      const near = new Path2D(), far = new Path2D();
-      let pen = null, pw = null, psp = null;
-      for (const p of s.pts) {
-        const c = S.ptCell(p);
-        if (!visA[c]) { pen = null; continue; }
-        const w = S.world(p);
-        if (pw && vdist(w, pw) > 0.3) pen = null;    // 貼り合わせの縁をまたいだら切る
-        pw = w;
-        const sp = projXYZ(w[0] * 1.012, w[1] * 1.012, w[2] * 1.012), path = frontA[c] ? near : far;
-        if (pen === path) path.lineTo(sp.x, sp.y);
-        else { path.moveTo(psp && pen ? psp.x : sp.x, psp && pen ? psp.y : sp.y); path.lineTo(sp.x, sp.y); }
-        pen = path; psp = sp;
-      }
-      ctx.stroke(near);
-      const al0 = ctx.globalAlpha; ctx.globalAlpha = 0.22; ctx.stroke(far); ctx.globalAlpha = al0;
-      ctx.shadowBlur = 0;
-    }
+    const qc = S.qixCell(q);
+    if (visA[qc]) drawNumerin(q, S.twoSided && !frontA[qc]);
   }
-  ctx.globalCompositeOperation = 'source-over';
   for (const q of qixes) if (!visA[S.qixCell(q)]) drawOffMarker(S.qixScreen(q), qixStroke(q.hue, 62, 1), 9);
 }
 
@@ -3668,7 +3769,7 @@ function renderOverlay() {
   const t = theme();
   if (state === 'ending') { drawEnding(t); return; }
   if (state === 'help') { drawHelp(t); return; }
-  const blinkOn = Math.sin(blinkT * 5) > -0.2;
+  const blinkOn = true;   // 文字は点滅させない(目にやさしく)
   ctx.textAlign = 'center';
 
   if ((state === 'play' || state === 'ready') && deathTimer > 0) {
@@ -3903,7 +4004,7 @@ function renderOverlay() {
       }
       if (qixes.length > 1) {
         ctx.fillStyle = '#ffd76b';
-        ctx.fillText('QIX 2体 ─ 分断で即クリア!', W / 2, y);
+        ctx.fillText('ヌメリン 2体 ─ 線で分断すると即クリア!', W / 2, y);
         y += 24;
       }
       if (isZen()) {
@@ -3918,7 +4019,7 @@ function renderOverlay() {
       }
       if (seekers.length) {
         ctx.fillStyle = '#ff5cf0';
-        ctx.fillText('SEEKER 出現 ─ 線を追ってくる。囲めば倒せる', W / 2, y);
+        ctx.fillText('オイカケ(SEEKER)出現 ─ 線を追ってくる。囲めば倒せる', W / 2, y);
       }
     }
     return;

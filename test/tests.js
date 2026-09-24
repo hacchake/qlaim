@@ -836,7 +836,7 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   const a = theme().name;
   settings.mode = 'GSD'; startGame();
   const b = theme().name;
-  assert('AUTOは盤面で配色が変わる(平面=NEON、星型=VAPOR)', a === 'NEON' && b === 'VAPOR' && col3D.length === NCOL * LV, a + '/' + b);
+  assert('AUTOは盤面で配色が変わる(平面=INK、星型=VAPOR)', a === 'INK' && b === 'VAPOR' && col3D.length === NCOL * LV, a + '/' + b);
   assert('全盤面にAUTOの配色がある', Object.keys(CONFIG.SURF).every(k => THEMES.some(t => t.name === AUTO_THEME[k])));
   settings.theme = 0; applyTheme();
 }
