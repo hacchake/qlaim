@@ -2835,6 +2835,13 @@ function drawPlayer(t) {
   });
   ctx.shadowBlur = 0;
   drawSpeech(cx, cy - 4 * s);
+  // 敵が近いときは頭に「!」
+  if (danger > 0 && speech.t <= 0 && Math.floor(blinkT * 8) & 1) {
+    ctx.fillStyle = '#ff3b3b';
+    ctx.font = "bold 18px 'Courier New', monospace";
+    ctx.textAlign = 'center';
+    ctx.fillText('!', cx, cy - 7 * s);
+  }
   // 導火線に火がついたら冷や汗
   if (fuse.lit && player.drawing && Math.floor(blinkT * 6) & 1) {
     ctx.fillStyle = '#9fdcff';
@@ -2871,6 +2878,32 @@ function drawItems() {
     drawItem(it, surf.screenOf(it.c), surf.is3D && surf.twoSided && !frontA[it.c]);
   }
 }
+// 危険度: SPARX / SEEKER が画面上で自機にどれだけ近いか(0〜1)
+let danger = 0;
+function calcDanger() {
+  danger = 0;
+  if (state !== 'play' || deathTimer > 0 || player.invuln > 0) return 0;
+  const p = surf.screenOf(player.c), R = 80;
+  const near = (c, need) => {
+    if (surf.is3D && need && !visA[c]) return;
+    const q = surf.screenOf(c), d = Math.hypot(q.x - p.x, q.y - p.y);
+    if (d < R) danger = Math.max(danger, 1 - d / R);
+  };
+  for (const sp of sparxes) if (!(sp.wait > 0)) near(sp.c, true);
+  if (player.drawing) for (const k of seekers) near(k.c, true);
+  return danger;
+}
+// 危険なときは画面のふちが赤く脈打つ
+function drawDangerEdge() {
+  if (danger <= 0) return;
+  const a = danger * (0.25 + 0.2 * Math.sin(blinkT * 14));
+  const g = ctx.createRadialGradient(W / 2, (FIELD_Y + H) / 2, 260, W / 2, (FIELD_Y + H) / 2, 520);
+  g.addColorStop(0, 'rgba(255,40,40,0)');
+  g.addColorStop(1, `rgba(255,40,40,${a})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, FIELD_Y, W, H - FIELD_Y);
+}
+
 // 画面上部: いま効いている効果とコンボ
 function drawStatus() {
   let x = 10;
@@ -2983,6 +3016,8 @@ function render() {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
   }
+  calcDanger();
+  drawDangerEdge();
   drawItems();
   drawSeekers();
   if (surf.is3D && !['title', 'options', 'achv', 'stats'].includes(state)) drawBackView(t);

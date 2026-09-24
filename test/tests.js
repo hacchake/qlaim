@@ -894,5 +894,17 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('SPARXの描画が例外なし', !err, err);
 }
 
+
+// ---- 63) 危険の知らせ ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 0;
+  sparxes[0].wait = 0; sparxes[0].c = surf.nb[surf.nb[player.c * 4 + 3] * 4 + 3];
+  assert('SPARXが近いと危険度が上がる', calcDanger() > 0.5, danger.toFixed(2));
+  sparxes.forEach(sp => sp.c = idx(GW >> 1, 0));
+  assert('遠ければ0', calcDanger() === 0);
+  let err = null; try { sparxes[0].c = surf.nb[player.c * 4 + 3]; render(); } catch (e) { err = e.stack; }
+  assert('危険表示の描画が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
