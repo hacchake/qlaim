@@ -674,6 +674,8 @@ const ACHV = [
   { id:'stars',    name:'星をつかむ',     txt:'星型3種をすべてクリア' },
   { id:'all',      name:'全制覇',         txt:'すべての盤面をクリア' },
   { id:'tourall',  name:'世界一周',       txt:'TOURを1周してエンディングを見る' },
+  { id:'nearmiss', name:'ギリギリの達人', txt:'1ゲームでニアミスを5回' },
+  { id:'bonus50',  name:'ボーナスハンター', txt:'BONUS AREAで占領率50%以上' },
 ];
 const achvGot = store.get('qlaim.ach', {});
 const itemsGot = store.get('qlaim.items', {});      // これまでに取ったアイテムの種類
@@ -2356,8 +2358,10 @@ function updateQix(q, dt) {
 }
 // ニアミスボーナス(2秒に1回まで)
 let nearMissT = 0;
+let nearMissN = 0;              // このゲームのニアミス回数
 function nearMiss() {
   nearMissT = 2;
+  if (++nearMissN >= 5) unlock('nearmiss');
   const pts = CONFIG.NEAR_MISS_PTS * surf.def.pts;
   score += pts;
   checkExtend();
@@ -2495,6 +2499,7 @@ function startGame() {
   hiScore = hiOf(modeKey());      // 日付が変わっていても今日の記録を使う
   stats.games++; saveStats();
   continues = 0;
+  nearMissN = 0;
   tutorStep = settings.tutor ? -1 : 0; tutorT = 0;
   nextExtend = CONFIG.EXTEND_FIRST;
   setState('ready');              // 先に READY にしてから盤面を作る(ワープ入場する)
@@ -2624,6 +2629,7 @@ function drawEnding(t) {
 
 function checkClearAchv(split) {
   unlock('first');
+  if (isBonus() && percent() >= 50) unlock('bonus50');
   if (split) unlock('split');
   if (areaMiss === 0) unlock('nomiss');
   if (areaTime < 60) unlock('speed');
@@ -3771,7 +3777,7 @@ function renderOverlay() {
     ctx.font = "bold 24px 'Courier New', monospace";
     ctx.fillText('実績  ' + n + ' / ' + ACHV.length, W / 2, 132);
     ACHV.forEach((a, i) => {
-      const y = 170 + i * 36, got = !!achvGot[a.id];
+      const y = 166 + i * 31, got = !!achvGot[a.id];
       ctx.textAlign = 'left';
       ctx.fillStyle = got ? '#ffd76b' : '#3d4768';
       ctx.font = "bold 15px 'Courier New', monospace";

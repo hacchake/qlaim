@@ -1020,5 +1020,18 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   assert('連続では入らない', score === sc2);
 }
 
+
+// ---- 75) 追加の実績 ----
+{
+  delete achvGot.nearmiss; delete achvGot.bonus50;
+  settings.mode = 'PLANE'; startGame();
+  for (let i = 0; i < 5; i++) { nearMissT = 0; nearMiss(); }
+  assert('ニアミス5回で「ギリギリの達人」', !!achvGot.nearmiss);
+  level = 5; initLevel(5); setState('play'); claimed = Math.ceil(initOpen * 0.55); startClear(false);
+  assert('BONUS AREAで50%以上で「ボーナスハンター」', !!achvGot.bonus50);
+  setState('achv'); let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('実績一覧(19件)の描画', !err && ACHV.length === 19, err || ACHV.length);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
