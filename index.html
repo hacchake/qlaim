@@ -564,16 +564,25 @@ const store = (() => {
 })();
 
 const settings = Object.assign(
-  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: 4, crt: true, mode: 'TOUR', music: 'AUTO', shake: true, glow: true },
+  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: THEMES.length, crt: true, mode: 'TOUR', music: 'AUTO', shake: true, glow: true },
   store.get('qlaim.settings', {})
 );
 if (!DIFFS[settings.diff]) settings.diff = 'NORMAL';
 if (!MODES.includes(settings.mode)) settings.mode = 'TOUR';
 if (!MUSIC_KEYS.includes(settings.music)) settings.music = 'AUTO';
-settings.theme = clamp(settings.theme | 0, 0, THEMES.length - 1);
+settings.theme = clamp(settings.theme | 0, 0, THEMES.length);   // THEMES.length = AUTO
 function saveSettings() { store.set('qlaim.settings', settings); }
 function diff() { return DIFFS[settings.diff]; }
-function theme() { return THEMES[settings.theme]; }
+// AUTO(settings.theme === THEMES.length)のときは盤面の種類で配色が変わる
+const AUTO_THEME = { PLANE:'NEON', TETRA:'PRISM', CUBE:'PRISM', OCTA:'PRISM', DODECA:'PRISM', ICOSA:'PRISM', SPHERE:'PRISM',
+  TRUNC_TETRA:'AURORA', TRUNC_CUBE:'AURORA', TRUNC_OCTA:'AURORA', TRUNC_DODECA:'AURORA', TRUNC_ICOSA:'AURORA',
+  CUBOCTA:'AURORA', ICOSIDODECA:'AURORA', RHOMBICUBOCTA:'AURORA', STELLA:'VAPOR', SSD:'VAPOR', GSD:'VAPOR',
+  TORUS:'CRT-G', MOBIUS:'CRT-G', KNOT:'CRT-G', KLEIN:'PRISM' };
+function theme() {
+  if (settings.theme < THEMES.length) return THEMES[settings.theme];
+  const nm = typeof surf !== 'undefined' && surf ? AUTO_THEME[surf.key] : 'NEON';
+  return THEMES.find(t => t.name === nm) || THEMES[0];
+}
 
 // ハイスコアは盤面モードごと(v2のハイスコアは PLANE に引き継ぐ)
 const hiScores = Object.assign({ PLANE: store.get('qlaim.hi', 0) | 0 }, store.get('qlaim.hi3', {}));
@@ -1729,6 +1738,7 @@ function makeQix(k, nq, spd) {
 }
 
 function initLevel(lv) {
+  const autoTheme = settings.theme >= THEMES.length;
   surf = getSurface(surfaceFor(lv));
   grid = new Uint8Array(surf.N);
   colA = new Uint8Array(surf.N);
@@ -1772,6 +1782,7 @@ function initLevel(lv) {
 
   particles = []; floats = [];
   deathTimer = 0; wasSplit = false; shakeT = 0;
+  if (autoTheme) applyTheme();   // AUTO: 盤面が変わったら配色(と背景)も
   redrawField();
 }
 
@@ -2482,7 +2493,7 @@ const OPT_ITEMS = [
   { k:'music', label:'BGM',      vals:MUSIC_KEYS, str:true },
   { k:'diff',  label:'難易度',   vals:DIFF_KEYS, str:true },
   { k:'lives', label:'残機',     min:1, max:5 },
-  { k:'theme', label:'テーマ',   vals:THEMES.map(t => t.name) },
+  { k:'theme', label:'テーマ',   vals:THEMES.map(t => t.name).concat(['AUTO']) },
   { k:'crt',   label:'CRT効果',  vals:['OFF','ON'], bool:true },
   { k:'glow',  label:'発光',     vals:['OFF','ON'], bool:true },
   { k:'shake', label:'画面揺れ', vals:['OFF','ON'], bool:true },

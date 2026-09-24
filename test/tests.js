@@ -829,5 +829,17 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('BGMが無いときの基準音は0(従来の音程)', Bgm.root() === 0);
 }
 
+
+// ---- 58) テーマ AUTO ----
+{
+  settings.theme = THEMES.length; settings.mode = 'PLANE'; startGame();
+  const a = theme().name;
+  settings.mode = 'GSD'; startGame();
+  const b = theme().name;
+  assert('AUTOは盤面で配色が変わる(平面=NEON、星型=VAPOR)', a === 'NEON' && b === 'VAPOR' && col3D.length === NCOL * LV, a + '/' + b);
+  assert('全盤面にAUTOの配色がある', Object.keys(CONFIG.SURF).every(k => THEMES.some(t => t.name === AUTO_THEME[k])));
+  settings.theme = 0; applyTheme();
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
