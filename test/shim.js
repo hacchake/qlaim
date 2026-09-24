@@ -6,6 +6,7 @@ const anyStub = new Proxy(function(){}, {
 });
 const ctxStub = new Proxy({}, { get: (t,p) => {
   if (p === 'canvas') return {};
+  if (p === 'measureText') return (txt) => ({ width: String(txt).length * 7 });
   return typeof p === 'string' ? (() => anyStub) : undefined;
 }, set: () => true });
 const elStub = () => ({

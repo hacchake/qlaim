@@ -150,6 +150,9 @@ const CONFIG = {
   BIG_CLAIM_PTS: 120,   // BIG CLAIM ボーナス(1%あたり)
   READY_TIME: 1.4,      // AREA表示(READY)の時間(秒)
   CONTINUE_TIME: 10,    // ゲームオーバー後、コンティニューできる秒数
+  BONUS_EVERY: 5,       // このエリアごとに BONUS AREA(5,10,15…)
+  BONUS_TIME: 40,       // BONUS AREA の制限時間(秒)
+  BONUS_PTS: 200,       // BONUS AREA の占領率1%あたりのボーナス
 
   /* -- SEEKER(追跡者) --------------------------------------------- */
   SEEKER_FROM: 4,       // このエリアから SEEKER が出る(8エリア目から2体)
@@ -1577,6 +1580,8 @@ let areaTime = 0;               // このエリアの経過時間
 let pauseSel = 0;               // ポーズメニューの選択行
 let continues = 0;              // このゲームでコンティニューした回数
 let demoT = 0, demoLv = 1;      // タイトルのデモ: 背景の盤面を巡らせる
+let bonusT = 0;                 // BONUS AREA の残り時間
+function isBonus(lv) { lv = lv || level; return lv % CONFIG.BONUS_EVERY === 0; }
 // 自動軽量化: プレイ中に重い(1フレーム28ms超が続く)ときは発光を切る。設定は保存しない
 const perf = { avg: 1 / 60, slowT: 0, lite: false };
 function watchPerf(rawDt) {
@@ -1716,17 +1721,20 @@ function initLevel(lv) {
   fuseReset();
   if (surf.is3D) camSnap([surf.dir[player.c * 3], surf.dir[player.c * 3 + 1], surf.dir[player.c * 3 + 2]]);
 
-  const spd = CONFIG.QIX_SPEED * diff().qix * Math.pow(CONFIG.QIX_ACCEL, lv - 1) * surf.def.qixSpeed;
+  const bonus = isBonus(lv) && state !== 'title';
+  bonusT = bonus ? CONFIG.BONUS_TIME : 0;
+  const spd = CONFIG.QIX_SPEED * diff().qix * Math.pow(CONFIG.QIX_ACCEL, lv - 1) * surf.def.qixSpeed * (bonus ? 0.6 : 1);
   qixes = [];
   const nq = lv >= CONFIG.TWO_QIX_FROM ? 2 : 1;
   for (let k = 0; k < nq; k++) qixes.push(makeQix(k, nq, spd));
 
   sparxes = [];
-  const ns = Math.min(4, surf.def.sparxStart + ((lv - 1) >> 1));
+  const ns = bonus ? 0 : Math.min(4, surf.def.sparxStart + ((lv - 1) >> 1));   // BONUS AREA は SPARX なし
   for (let i = 0; i < ns; i++) spawnSparx(i % 2 ? 1 : -1, surf.def.sparxWait + i * 1.5 * (surf.def.sparxWait > 0));
   sparxTimer = CONFIG.SPARX_INTERVAL * diff().interval;
   // SEEKER は盤面ができて自機の位置が決まってから出す
-  if (lv >= CONFIG.SEEKER_FROM) for (let i = 0; i < (lv >= CONFIG.SEEKER_FROM + 4 ? 2 : 1); i++) spawnSeeker();
+  if (bonus) sparxTimer = Infinity;
+  if (lv >= CONFIG.SEEKER_FROM && !bonus) for (let i = 0; i < (lv >= CONFIG.SEEKER_FROM + 4 ? 2 : 1); i++) spawnSeeker();
 
   particles = []; floats = [];
   deathTimer = 0; wasSplit = false; shakeT = 0;
@@ -2106,8 +2114,8 @@ function updateItems(dt) {
   if (comboT > 0) comboT -= dt;
   itemTimer -= dt;
   if (itemTimer <= 0) {
-    itemTimer = CONFIG.ITEM_INTERVAL;
-    if (items.length < CONFIG.ITEM_MAX) spawnItem();
+    itemTimer = bonusT > 0 ? 3 : CONFIG.ITEM_INTERVAL;           // BONUS AREA はどんどん出る
+    if (items.length < (bonusT > 0 ? 4 : CONFIG.ITEM_MAX)) spawnItem();
   }
   for (const it of items) it.t += dt;
   items = items.filter(it => it.t < CONFIG.ITEM_LIFE);
@@ -2258,6 +2266,18 @@ function death() {
   spawnParticles(p.x, p.y, 30, '#ff5c8a');
 }
 
+// 描きかけの線を取り消して描き始めの場所へ戻る(残機は減らない)
+function cancelTrail() {
+  if (!player.drawing) return;
+  for (const c of trail) grid[c] = OPEN;
+  trail = [];
+  player.drawing = false;
+  fuseReset();
+  Snd.stopDraw();
+  if (trailStart >= 0) { player.c = trailStart; player.prev = -1; }
+  snapPlayerToBoundary();
+}
+
 function applyDeath() {
   if (!guarded) { lives--; areaMiss++; }
   guarded = false;
@@ -2298,7 +2318,8 @@ function startGame() {
 
 function startClear(split) {
   wasSplit = !!split;
-  lastBonus = Math.max(0, Math.round((percent() - target()) * 150))
+  lastBonus = (bonusT > 0 || isBonus() ? Math.round(percent() * CONFIG.BONUS_PTS) : 0)
+            + Math.max(0, Math.round((percent() - target()) * 150))
             + level * 500
             + (split ? CONFIG.SPLIT_BONUS + (level - 1) * CONFIG.SPLIT_BONUS_LV : 0);
   score += lastBonus;
@@ -2500,6 +2521,8 @@ function update(dt) {
   updateItems(dt);
   areaTime += dt;
   if (tutorStep >= 0) { tutorT += dt; if (tutorStep === 3 && tutorT > 6) tutorAdvance(4); }
+  // BONUS AREA: 時間切れでクリア(それまでの占領率でボーナス)
+  if (bonusT > 0) { bonusT -= dt; if (bonusT <= 0) { bonusT = 0.001; cancelTrail(); startClear(false); bonusT = 0; return; } }
   updateParticles(dt);
   updateFloats(dt);
 }
@@ -2664,6 +2687,7 @@ function drawStatus() {
     ctx.fillStyle = col; ctx.fillText(txt, x + 7, y + 13);
     x += w + 6;
   };
+  if (bonusT > 0) pill('BONUS ' + Math.ceil(bonusT) + 's', '#ff9ee8');
   if (slowT > 0) pill('S SLOW ' + Math.ceil(slowT), ITEMS.slow.col);
   if (starT > 0) pill('★ x2 ' + Math.ceil(starT), ITEMS.star.col);
   if (player.shield) pill('◆ SHIELD', ITEMS.shield.col);
@@ -3353,7 +3377,7 @@ function renderOverlay() {
       ctx.fillRect(0, FIELD_Y, W, H - FIELD_Y);
       ctx.fillStyle = t.accent;
       ctx.font = "bold 44px 'Courier New', monospace";
-      ctx.fillText('AREA ' + level, W / 2, H / 2 - 40);
+      ctx.fillText((bonusT > 0 ? 'BONUS ' : '') + 'AREA ' + level, W / 2, H / 2 - 40);
       ctx.fillStyle = '#cdd8ff';
       ctx.font = "bold 18px 'Courier New', monospace";
       ctx.fillText('── ' + surf.def.label + ' ──', W / 2, H / 2 - 6);
@@ -3375,6 +3399,11 @@ function renderOverlay() {
       if (qixes.length > 1) {
         ctx.fillStyle = '#ffd76b';
         ctx.fillText('QIX 2体 ─ 分断で即クリア!', W / 2, y);
+        y += 24;
+      }
+      if (bonusT > 0) {
+        ctx.fillStyle = '#ff9ee8';
+        ctx.fillText('BONUS AREA ─ ' + CONFIG.BONUS_TIME + '秒で好きなだけ囲め! 敵はQIXだけ', W / 2, y);
         y += 24;
       }
       if (seekers.length) {

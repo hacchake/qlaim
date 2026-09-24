@@ -703,5 +703,24 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
 // ---- 48) 音に合わせた脈動 ----
 assert('脈動はAC無しなら0', Bgm.pulse() === 0);
 
+
+// ---- 49) BONUS AREA ----
+{
+  settings.mode = 'PLANE'; settings.tutor = true; startGame(); level = 5; initLevel(5); setState('play');
+  assert('AREA5はBONUS AREA(SPARX/SEEKERなし・制限時間あり)', bonusT > 0 && sparxes.length === 0 && seekers.length === 0, bonusT);
+  player.invuln = 99; held.fast = true; steps(0, -1, 20); steps(-1, 0, 20); steps(0, 1, 30);
+  const pct = percent(), sc = score;
+  for (let i = 0; i < 60 * 45 && state === 'play'; i++) update(1/60);
+  assert('時間切れでクリア、占領率に応じたボーナス', state === 'clear' && lastBonus >= Math.round(pct * CONFIG.BONUS_PTS), 'bonus=' + lastBonus + ' pct=' + pct.toFixed(1));
+  // 描いている最中に時間切れ → 残機は減らず線だけ消える
+  level = 5; initLevel(5); setState('play'); player.invuln = 99; held.fast = true; steps(0, -1, 5);
+  const lv0 = lives; bonusT = 0.01; update(1/60);
+  assert('描画中の時間切れでも残機は減らない', state === 'clear' && lives === lv0 && countCells(TRAIL) === 0 && !player.drawing);
+  nextLevel();
+  assert('次のエリアは通常(制限時間なし)', level === 6 && bonusT === 0 && sparxes.length > 0);
+  let err = null; try { level = 10; initLevel(10); setState('ready'); render(); } catch (e) { err = e.stack; }
+  assert('BONUS AREAのREADY表示が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
