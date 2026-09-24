@@ -3912,7 +3912,10 @@ function renderOverlay() {
     panel(150, 290, W - 300, 344);
     ctx.fillStyle = '#ffffff';
     ctx.font = "bold 26px 'Courier New', monospace";
-    ctx.fillText('PAUSE', W / 2, 350);
+    ctx.fillText('PAUSE', W / 2, 340);
+    ctx.fillStyle = '#8fa3d9';
+    ctx.font = "bold 12px 'Courier New', monospace";
+    ctx.fillText('AREA ' + level + ' ' + surf.def.label + '   ' + percent().toFixed(1) + '% / ' + target() + '%   SCORE ' + score, W / 2, 362);
     pauseRects = [];
     PAUSE_ITEMS.forEach((lb, i) => {
       const y = 396 + i * 44, sel = i === pauseSel;
