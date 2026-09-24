@@ -117,6 +117,15 @@ node test/run-tests.js
 - 敵はキャラクター: QIX=クラゲ「ヌメリン」(`drawNumerin`)、SPARX=火の玉「バチッコ」(`drawSparx`)、
   SEEKER=一つ目スライム「オイカケ」(`drawSeeker`)。既存の有名キャラに似せない。
 
+## buddy たち(v6)
+- Claude Code の /buddy の18種が登場(`BUDDIES` / `BUDDY_ORDER`)。エリアごとに2〜3匹(`buddiesFor`)、9エリアで全員
+- 役割(role): ally=迷子の味方(囲むと助けて perk) / eater=陣地をかじる(`erode`、最初の壁 `baseA` はかじらない) /
+  squirt=タコの墨 / thief=アイテム泥棒 / block=通せんぼ(`buddyBlocks`) / spike・hop・slide・ghost・dragon=線に触れるとミス
+- 囲んだとき `catchBuddies`(味方は `rescue`、いたずら組はつかまえる)。カタツムリ・キノコはさわると `shoo`
+- 陣地を減らすときも `claimed === initOpen - 空きセル数` を守る(`erode` で claimed--)
+- 絵は `drawBuddy`(すべて図形)。図鑑は state 'dex'(タイトルの B、OPTIONS)、会った記録は `buddyMet`
+- テストの前半は `buddiesOn = false` にして、ランダムに出る buddy が他の検証を邪魔しないようにしている
+
 ## 音楽の仕組み(v5)
 - 音の経路: 各音 → (左右パン) → BGMバス → ローパス → コンプレッサー → マスター。リバーブへは `send` で送る
 - `Snd.note(..., x)` の x: flt(フィルター開閉)/ vib(ビブラート)/ pn(左右)/ rv(リバーブ)。省略時はシーケンサが決める

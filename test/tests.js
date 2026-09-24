@@ -12,6 +12,7 @@ const pxy = () => (player.c % GW) + ',' + ((player.c / GW) | 0);
 const nbs = c => Array.from(surf.nb.slice(c * 4, c * 4 + 4));
 function countCells(v) { let n = 0; for (let i = 0; i < surf.N; i++) if (grid[i] === v) n++; return n; }
 
+buddiesOn = false;   // ほかの検証の邪魔をしないよう buddy は後で個別に確かめる
 settings.mode = 'PLANE'; initLevel(1);
 
 // ---- 1) 初期状態 ----
@@ -1030,7 +1031,7 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   level = 5; initLevel(5); setState('play'); claimed = Math.ceil(initOpen * 0.55); startClear(false);
   assert('BONUS AREAで50%以上で「ボーナスハンター」', !!achvGot.bonus50);
   setState('achv'); let err = null; try { render(); } catch (e) { err = e.stack; }
-  assert('実績一覧(19件)の描画', !err && ACHV.length === 19, err || ACHV.length);
+  assert('実績一覧(21件)の描画', !err && ACHV.length === 21, err || ACHV.length);
 }
 
 
@@ -1062,6 +1063,59 @@ assert('全曲に表示名がある', Object.keys(BGMDATA).every(k => SONG_LABEL
   catch (e) { err = e.stack; }
   assert('新しい音色・打楽器はAC無しでも安全', !err, err);
   Bgm._load('splash'); assert('曲の読み込み', Bgm.section === 0); Bgm.stop();
+}
+
+
+// ---- 80) buddy たち ----
+buddiesOn = true;
+{
+  // 登場順: 9エリアで18種全員
+  const all = new Set(); for (let lv = 1; lv <= 9; lv++) buddiesFor(lv).forEach(k => all.add(k));
+  assert('9エリアで18種全員が登場する', all.size === 18 && Object.keys(BUDDIES).length === 18, all.size);
+  const mk = (k, lv) => { settings.mode = 'PLANE'; startGame(); level = lv || 1; initLevel(level); setState('play'); buddies = []; fireballs = []; sparxes = []; seekers = []; return spawnBuddy(k); };
+  // 味方: 囲んで助ける
+  let b = mk('axolotl'); player.invuln = 99; held.fast = false;
+  const x0 = player.c % GW; b.c = idx(x0 - 2, GH - 3); const l0 = lives;
+  steps(0, -1, 4); steps(-1, 0, 4); steps(0, 1, 6);
+  assert('迷子のウーパールーパーを囲んで助けると残機+1', buddies.length === 0 && lives === l0 + 1, lives + '/' + l0);
+  // いたずら組: 囲むとつかまえる
+  b = mk('goose'); player.invuln = 99; b.c = idx(x0 - 2, GH - 3); const s0 = score;
+  steps(0, -1, 4); steps(-1, 0, 4); steps(0, 1, 6);
+  assert('ガチョウを囲むとつかまえる', buddies.length === 0 && score > s0);
+  // ガチョウはアイテムを取る
+  b = mk('goose'); items = [{ c: idx(60, 60), k: 'star', t: 0 }]; b.c = idx(55, 60);
+  for (let i = 0; i < 120; i++) updateBuddies(1/30);
+  assert('ガチョウがアイテムを横取り', items.length === 0);
+  // カタツムリ: 陣地をかじる(占領率が下がる・整合は保つ)
+  b = mk('snail'); player.invuln = 99; steps(0, -1, 10); steps(-1, 0, 10); steps(0, 1, 12);
+  const c1 = claimed; b.c = idx(x0 - 10, GH - 11); b.cd = 0;
+  for (let i = 0; i < 30; i++) updateBuddies(0.2);
+  assert('カタツムリが陣地をかじる(占領数が減り整合も保つ)', claimed < c1 && claimed === initOpen - countCells(OPEN), c1 + '→' + claimed);
+  assert('外枠(最初の壁)はかじらない', [0, GW - 1, idx(0, GH - 1)].every(c => grid[c] === WALL));
+  // さわると追い払える
+  b.c = surf.nb[player.c * 4 + 3]; b.cd = 99;
+  const nb3 = b.c; if (isBoundary(nb3)) { playerStep(nb3); for (const bb of buddies.slice()) if (bRole(bb) === 'eater' && bb.c === player.c) shoo(bb); }
+  assert('カタツムリにさわると追い払える', !buddies.some(x => x.k === 'snail') || !isBoundary(nb3));
+  // ネコ: 通せんぼ
+  b = mk('cat'); const nx = surf.nb[player.c * 4 + 3]; b.c = nx; b.cd = 99;
+  assert('ネコのいるマスには入れない', playerStep(nx) === false && buddyBlocks(nx));
+  // サボテン: 線で触れるとミス
+  b = mk('cactus'); player.invuln = 0; b.c = idx(player.c % GW, GH - 3); held.fast = false;
+  steps(0, -1, 3); updateBuddies(0.01);
+  assert('サボテンに線で触れるとミス', deathTimer > 0);
+  // ドラゴン: 火の玉
+  b = mk('dragon', 3); player.invuln = 0; held.fast = true; steps(0, -1, 30);
+  b.c = idx(0, GH - 20); b.cd = 0; updateBuddies(0.01);
+  assert('ドラゴンが火の玉を吐く', fireballs.length === 1 || deathTimer > 0, fireballs.length);
+  // ブロブ: インクボム
+  b = mk('blob'); const c2 = claimed; b.c = idx(64, 80); inkBomb(b.c, 5);
+  assert('ブロブのインクボムで陣地が増える(整合)', claimed > c2 + 20 && claimed === initOpen - countCells(OPEN));
+  // 図鑑・描画
+  let err = null;
+  try { for (const k of Object.keys(BUDDIES)) drawBuddy(k, 100, 100, 1, { ph: 1, warn: true }); setState('dex'); render(); settings.mode = 'SPHERE'; startGame(); level = 8; initLevel(8); setState('play'); render(); }
+  catch (e) { err = e.stack; }
+  assert('buddy18種・図鑑・立体での描画が例外なし', !err, err);
+  assert('会ったbuddyが図鑑に記録される', Object.keys(buddyMet).length >= 8);
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

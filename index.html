@@ -720,6 +720,8 @@ const ACHV = [
   { id:'tourall',  name:'世界一周',       txt:'TOURを1周してエンディングを見る' },
   { id:'nearmiss', name:'ギリギリの達人', txt:'1ゲームでニアミスを5回' },
   { id:'bonus50',  name:'ボーナスハンター', txt:'BONUS AREAで占領率50%以上' },
+  { id:'buddyall', name:'総出演',         txt:'18種のbuddy全員に会う' },
+  { id:'rescue5',  name:'たすけあい',     txt:'迷子のbuddyを5回たすける' },
 ];
 const achvGot = store.get('qlaim.ach', {});
 const itemsGot = store.get('qlaim.items', {});      // これまでに取ったアイテムの種類
@@ -1981,6 +1983,10 @@ function initLevel(lv) {
   // SEEKER は盤面ができて自機の位置が決まってから出す
   if (bonus || isZen()) sparxTimer = Infinity;
   if (lv >= CONFIG.SEEKER_FROM && !bonus && !isZen()) for (let i = 0; i < (lv >= CONFIG.SEEKER_FROM + 4 ? 2 : 1); i++) spawnSeeker();
+  // 最初からある壁(外枠・HOME)は buddy にかじられない
+  baseA = new Uint8Array(surf.N);
+  for (let i = 0; i < surf.N; i++) if (grid[i] === WALL) baseA[i] = 1;
+  spawnBuddiesFor(lv);
 
   particles = []; floats = [];
   deathTimer = 0; wasSplit = false; shakeT = 0;
@@ -2123,7 +2129,7 @@ function canEnter(n) {
   if (n < 0) return false;
   const v = grid[n];
   if (player.drawing) return v !== TRAIL;
-  return (v === WALL && isBoundary(n)) || v === OPEN;
+  return (v === WALL && isBoundary(n) && !buddyBlocks(n)) || v === OPEN;
 }
 
 // 押された方向 d(画面上の上下左右)に進む先のセルを選ぶ。なければ -1
@@ -2162,6 +2168,7 @@ function playerMove(d) {
   if (!playerStep(chooseMove(d))) return false;
   player.lastDir = d;
   player.moveT = blinkT;
+  for (const b of buddies.slice()) if (bRole(b) === 'eater' && b.c === player.c) shoo(b);   // さわって追い払う
   tutorAdvance(player.drawing ? 2 : 1);
   if (d === 'left') player.look = -1; else if (d === 'right') player.look = 1;
   return true;
@@ -2172,7 +2179,7 @@ function playerStep(n) {
   const v = grid[n];
 
   if (!player.drawing) {
-    if (v === WALL && isBoundary(n)) { player.prev = player.c; player.c = n; return true; }
+    if (v === WALL && isBoundary(n) && !buddyBlocks(n)) { player.prev = player.c; player.c = n; return true; }
     if (v === OPEN) {
       // 描画開始
       player.drawing = true;
@@ -2228,6 +2235,7 @@ function closeTrail() {
       score += gained * mul;
       collectItems();
       crushSeekers();
+      catchBuddies();
       for (const q of crushed) {
         const sp = surf.qixScreen(q);
         spawnParticles(sp.x, sp.y, 42, theme().accent);
@@ -2252,6 +2260,7 @@ function closeTrail() {
 
   collectItems();
   crushSeekers();
+  catchBuddies();
   tutorAdvance(3);
   if (gained > 0) { stats.claims++; stats.cells += gained; }
   if (gained > 0) {
@@ -2400,6 +2409,531 @@ function drawSeekers() {
   }
 }
 
+/* =====================================================================
+   Clawd の buddy(なかま)たち ─ 18種が総出演
+   role:
+     ally   … 迷子の味方。空き地にいる。線で囲んで助けるとごほうび(perk)
+     eater  … 陣地を減らす。線の上にいて、となりの陣地を空き地に戻す(さわると追い払える)
+     squirt … タコ。空き地から墨をとばして陣地に穴をあける
+     thief  … ガチョウ。アイテムを横取り
+     block  … ネコ類。線の上で通せんぼ(自機はそのマスに入れない)
+     spike / hop / slide / ghost / dragon … 描きかけの線に触れるとミス
+   いたずら組も、空き地にいるものは線で囲むとつかまえられる
+===================================================================== */
+const BUDDIES = {
+  duck:     { name:'アヒル',           role:'ally',   perk:'pts',   txt:'迷子。囲んで助けると +2000' },
+  axolotl:  { name:'ウーパールーパー', role:'ally',   perk:'life',  txt:'迷子。助けると残機+1' },
+  turtle:   { name:'カメ',             role:'ally',   perk:'shield',txt:'迷子。助けるとSHIELD' },
+  capybara: { name:'カピバラ',         role:'ally',   perk:'slow',  txt:'迷子。助けると敵がのんびり' },
+  owl:      { name:'フクロウ',         role:'ally',   perk:'star',  txt:'迷子。助けると得点2倍' },
+  robot:    { name:'ロボ',             role:'ally',   perk:'zap',   txt:'迷子。助けるとSPARXを一掃' },
+  blob:     { name:'ブロブ',           role:'ally',   perk:'bomb',  txt:'迷子。助けるとまわりをインクで塗る' },
+  snail:    { name:'カタツムリ',       role:'eater',  txt:'線をはって陣地をかじる。さわると追い払える' },
+  mushroom: { name:'キノコ',           role:'eater',  txt:'線に生えて陣地を溶かす。さわると抜ける' },
+  octopus:  { name:'タコ',             role:'squirt', txt:'墨をとばして陣地に穴をあける。囲むとつかまる' },
+  goose:    { name:'ガチョウ',         role:'thief',  txt:'アイテムを横取り。囲むとつかまる' },
+  cat:      { name:'ネコ',             role:'block',  txt:'線の上で昼寝して通せんぼ' },
+  chonk:    { name:'デブネコ',         role:'block',  txt:'大きな体で線をふさぐ' },
+  cactus:   { name:'サボテン',         role:'spike',  txt:'線で触れるとミス。囲むと抜ける' },
+  rabbit:   { name:'ウサギ',           role:'hop',    txt:'ぴょんぴょん跳ねる。線に触れるとミス' },
+  penguin:  { name:'ペンギン',         role:'slide',  txt:'まっすぐすべる。線に触れるとミス' },
+  ghost:    { name:'ユーレイ',         role:'ghost',  txt:'壁もすり抜ける。線に触れるとミス' },
+  dragon:   { name:'ドラゴン',         role:'dragon', txt:'線の上から火の玉。線に当たるとミス' },
+};
+// 登場順(エリアごとに2匹ずつ。9エリアで全員に会える)
+const BUDDY_ORDER = ['duck','snail','goose','cactus','capybara','cat','rabbit','turtle','mushroom',
+                     'penguin','owl','octopus','chonk','axolotl','ghost','robot','dragon','blob'];
+const buddyMet = store.get('qlaim.buddy', {});
+let buddies = [], fireballs = [], baseA = new Uint8Array(0), fieldDirty = false;
+const bRole = b => BUDDIES[b.k].role;
+const onLine = role => role === 'eater' || role === 'block' || role === 'dragon';
+const harmful = role => role === 'spike' || role === 'hop' || role === 'slide' || role === 'ghost';
+
+function buddiesFor(lv) {
+  const n = lv >= 10 ? 3 : 2, b0 = ((lv - 1) * 2) % BUDDY_ORDER.length, out = [];
+  for (let i = 0; i < n; i++) out.push(BUDDY_ORDER[(b0 + i) % BUDDY_ORDER.length]);
+  return out;
+}
+function randomCell(test, minPx) {
+  const pp = surf.screenOf(player.c);
+  for (let tries = 0; tries < 300; tries++) {
+    const c = (Math.random() * surf.N) | 0;
+    if (!test(c)) continue;
+    const q = surf.screenOf(c);
+    if (Math.hypot(q.x - pp.x, q.y - pp.y) < minPx && tries < 250) continue;
+    return c;
+  }
+  return -1;
+}
+let buddiesOn = true;           // (テストで他の検証を邪魔しないよう止められる)
+function spawnBuddiesFor(lv) {
+  buddies = []; fireballs = [];
+  if (state === 'title' || !buddiesOn) return;
+  for (const k of buddiesFor(lv)) {
+    if ((isBonus(lv) || isZen()) && BUDDIES[k].role !== 'ally') continue;   // BONUS/ZEN は味方だけ
+    spawnBuddy(k);
+  }
+}
+function spawnBuddy(k) {
+  const role = BUDDIES[k].role, qc = qixes.map(q => surf.qixCell(q));
+  const c = onLine(role)
+    ? randomCell(c => isBoundary(c) && c !== player.c && !buddies.some(b => b.c === c), 90)
+    : randomCell(c => grid[c] === OPEN && !qc.includes(c), 90);
+  if (c < 0) return null;
+  const b = { k, c, prev: -1, acc: rand(0, 1), ph: rand(0, 6), t: 0, cd: rand(2, 4), warn: false, jump: 0 };
+  buddies.push(b);
+  if (!buddyMet[k]) {
+    buddyMet[k] = todayStr(); store.set('qlaim.buddy', buddyMet);
+    floats.push({ x: W / 2, y: FIELD_Y + 90, txt: 'はじめまして ' + BUDDIES[k].name + '!', t: 2.2, col: '#ffd76b' });
+    if (Object.keys(BUDDIES).every(x => buddyMet[x])) unlock('buddyall');
+  }
+  return b;
+}
+// 自機がこのマスに入れないか(ネコの通せんぼ)
+function buddyBlocks(n) {
+  for (const b of buddies) {
+    if (b.k === 'cat' && b.c === n) return true;
+    if (b.k === 'chonk' && (b.c === n || nbIndex(b.c, n) >= 0)) return true;
+  }
+  return false;
+}
+// 陣地を1マス空き地に戻す(最初からある壁・自機・描き始め・SPARX・buddy のいるマスはかじらない)
+function erode(c) {
+  if (c < 0 || grid[c] !== WALL || baseA[c] || c === player.c || c === trailStart) return false;
+  if (sparxes.some(sp => sp.c === c) || buddies.some(b => b.c === c)) return false;
+  grid[c] = OPEN; colA[c] = 0; claimAt[c] = -1e9;
+  claimed--;
+  fieldDirty = true;
+  const p = surf.screenOf(c);
+  for (let i = 0; i < 4; i++) particles.push({ x: p.x, y: p.y, vx: rand(-30, 30), vy: rand(-30, 10), t: rand(0.3, 0.5), col: '#4a3a2a', ink: true, r: rand(1.2, 2.2) });
+  return true;
+}
+// b のまわり(グラフで r 歩以内)の、線上の陣地を1マスかじる
+function eatNear(b, r) {
+  let cur = [b.c];
+  const seen = new Set(cur), cands = [];
+  for (let d = 0; d < r; d++) {
+    const nx = [];
+    for (const a of cur) for (let k = 0; k < 4; k++) {
+      const n = surf.nb[a * 4 + k];
+      if (n < 0 || seen.has(n)) continue;
+      seen.add(n); nx.push(n);
+      if (grid[n] === WALL && isBoundary(n) && !baseA[n]) cands.push(n);
+    }
+    cur = nx;
+  }
+  for (const c of cands.sort(() => Math.random() - 0.5)) if (erode(c)) return true;
+  return false;
+}
+// 空き地を歩く(mode: wander ふらふら / straight まっすぐ / item アイテムへ)。入れるのは空き地と(危ない子なら)描きかけの線
+function moveOpen(b, dt, spd, mode) {
+  b.acc += dt * spd;
+  while (b.acc >= 1) {
+    b.acc -= 1;
+    const nb = surf.nb, c = b.c, ok = n => n >= 0 && (grid[n] === OPEN || (grid[n] === TRAIL && harmful(bRole(b))));
+    const cands = [];
+    for (let k = 0; k < 4; k++) if (ok(nb[c * 4 + k])) cands.push(nb[c * 4 + k]);
+    if (!cands.length) return;
+    const kp = b.prev >= 0 ? nbIndex(c, b.prev) : -1, straight = kp >= 0 ? nb[c * 4 + ((kp + 2) & 3)] : -1;
+    let next;
+    if (mode === 'item' && items.length) {
+      const P = surf.pos, it = items[0].c * 3;
+      let bd = Infinity;
+      for (const n of cands) { const d = (P[n * 3] - P[it]) ** 2 + (P[n * 3 + 1] - P[it + 1]) ** 2 + (P[n * 3 + 2] - P[it + 2]) ** 2; if (d < bd) { bd = d; next = n; } }
+    } else if (cands.includes(straight) && Math.random() < (mode === 'straight' ? 0.97 : 0.8)) next = straight;
+    else { const o = cands.filter(n => n !== b.prev); next = pick(o.length ? o : cands); }
+    b.prev = c; b.c = next;
+    if (harmful(bRole(b)) && hitsTrail(b.c)) { death(); return; }
+  }
+}
+function hitsTrail(c) { return grid[c] === TRAIL || (player.drawing && c === player.c); }
+// 線の上を歩く(カタツムリ)
+function moveLine(b, dt, spd) {
+  b.acc += dt * spd;
+  while (b.acc >= 1) {
+    b.acc -= 1;
+    const nb = surf.nb, c = b.c, cands = [];
+    for (let k = 0; k < 4; k++) { const n = nb[c * 4 + k]; if (n >= 0 && isBoundary(n)) cands.push(n); }
+    if (!cands.length) { const r = randomCell(isBoundary, 60); if (r >= 0) { b.c = r; b.prev = -1; } return; }
+    const kp = b.prev >= 0 ? nbIndex(c, b.prev) : -1, straight = kp >= 0 ? nb[c * 4 + ((kp + 2) & 3)] : -1;
+    const o = cands.filter(n => n !== b.prev);
+    b.prev = c; b.c = o.includes(straight) ? straight : pick(o.length ? o : cands);
+  }
+}
+function updateBuddies(dt) {
+  const sl = enemySlow(), sp = surf.def.speed;
+  for (const b of buddies.slice()) {
+    b.t += dt; b.ph += dt; if (b.jump > 0) b.jump -= dt;
+    const role = bRole(b);
+    if (role === 'ally') moveOpen(b, dt, 2.2 * sp, 'wander');
+    else if (role === 'thief') {
+      moveOpen(b, dt, 5 * sp * sl, 'item');
+      const it = items.find(i => i.c === b.c);
+      if (it) {
+        items.splice(items.indexOf(it), 1);
+        const q = surf.screenOf(b.c);
+        floats.push({ x: q.x, y: q.y - 14, txt: 'ガチョウに取られた!', t: 1.4, col: '#ffffff' });
+      }
+    } else if (role === 'hop') {
+      b.cd -= dt * sl;
+      if (b.cd <= 0) {           // ぴょん: まっすぐ4マスまで跳ぶ(通ったマスで当たり判定)
+        b.cd = rand(0.9, 1.6);
+        const dirs = [0, 1, 2, 3].filter(k => { const n = surf.nb[b.c * 4 + k]; return n >= 0 && grid[n] !== WALL; });
+        if (dirs.length) {
+          let k = pick(dirs), c = b.c;
+          for (let i = 0; i < 4; i++) {
+            const n = surf.nb[c * 4 + k];
+            if (n < 0 || grid[n] === WALL) break;
+            const kp = nbIndex(n, c);
+            b.prev = c; c = n; b.c = c; b.jump = 0.25;
+            if (hitsTrail(c)) { death(); return; }
+            if (kp >= 0) k = (kp + 2) & 3;
+          }
+        }
+      }
+    } else if (role === 'slide') moveOpen(b, dt, 9 * sp * sl, 'straight');
+    else if (role === 'ghost') {       // 壁もすり抜ける
+      b.acc += dt * 3.5 * sp * sl;
+      while (b.acc >= 1) {
+        b.acc -= 1;
+        const kp = b.prev >= 0 ? nbIndex(b.c, b.prev) : -1, st = kp >= 0 ? surf.nb[b.c * 4 + ((kp + 2) & 3)] : -1;
+        const cand = [0, 1, 2, 3].map(k => surf.nb[b.c * 4 + k]).filter(n => n >= 0);
+        const next = st >= 0 && Math.random() < 0.85 ? st : pick(cand);
+        b.prev = b.c; b.c = next;
+        if (hitsTrail(b.c)) { death(); return; }
+      }
+    } else if (role === 'squirt') {
+      moveOpen(b, dt, 1.5 * sp, 'wander');
+      b.cd -= dt * sl;
+      if (b.cd <= 0) { b.cd = 7; squirt(b); }
+    } else if (role === 'eater') {
+      if (b.k === 'snail') moveLine(b, dt, 1.3 * sp * sl);
+      b.cd -= dt * sl;
+      if (b.cd <= 0) { b.cd = b.k === 'snail' ? 1.6 : 2.8; eatNear(b, b.k === 'snail' ? 1 : 2); }
+      if (b.c === player.c) { shoo(b); continue; }
+    } else if (role === 'block') {
+      b.cd -= dt;
+      if (b.cd <= 0) {           // 起きて別の線へ(自機のいない所)
+        b.cd = b.k === 'chonk' ? 14 : 9;
+        const c = randomCell(c => isBoundary(c) && c !== player.c, 120);
+        if (c >= 0) b.c = c;
+      }
+    } else if (role === 'dragon') {
+      if (!isBoundary(b.c)) { const c = randomCell(isBoundary, 120); if (c >= 0) b.c = c; }
+      b.cd -= dt * sl;
+      b.warn = b.cd < 1.2;
+      if (b.cd <= 0) { b.cd = rand(5, 7); breathe(b); }
+    }
+    if (harmful(role) && hitsTrail(b.c)) { death(); return; }
+  }
+  updateFireballs(dt);
+}
+// タコの墨: 近くの線上の陣地に穴(3マスまで)
+function squirt(b) {
+  const P = surf.pos, bc = b.c * 3;
+  let best = -1, bd = Infinity;
+  for (let c = 0; c < surf.N; c++) {
+    if (grid[c] !== WALL || baseA[c] || !isBoundary(c)) continue;
+    const d = (P[c * 3] - P[bc]) ** 2 + (P[c * 3 + 1] - P[bc + 1]) ** 2 + (P[c * 3 + 2] - P[bc + 2]) ** 2;
+    if (d < bd) { bd = d; best = c; }
+  }
+  if (best < 0) return;
+  let n = 0;
+  if (erode(best)) n++;
+  for (let k = 0; k < 4 && n < 3; k++) { const a = surf.nb[best * 4 + k]; if (a >= 0 && isBoundary(a) && erode(a)) n++; }
+  if (n) {
+    const q = surf.screenOf(best);
+    for (let i = 0; i < 12; i++) particles.push({ x: q.x, y: q.y, vx: rand(-60, 60), vy: rand(-60, 30), t: rand(0.4, 0.7), col: '#2a1638', ink: true, r: rand(1.5, 3) });
+    floats.push({ x: q.x, y: q.y - 10, txt: '墨!', t: 1.0, col: '#c9a6ff' });
+  }
+}
+// ドラゴンの火の玉: 空き地へまっすぐ飛ぶ(なるべく自機のほうへ)
+function breathe(b) {
+  const pp = surf.screenOf(player.c), bp = surf.screenOf(b.c);
+  let bestK = -1, bd = -2;
+  for (let k = 0; k < 4; k++) {
+    const n = surf.nb[b.c * 4 + k];
+    if (n < 0 || grid[n] === WALL) continue;
+    const q = surf.screenOf(n), dx = q.x - bp.x, dy = q.y - bp.y, l = Math.hypot(dx, dy) || 1;
+    const d = (dx * (pp.x - bp.x) + dy * (pp.y - bp.y)) / (l * (Math.hypot(pp.x - bp.x, pp.y - bp.y) || 1));
+    if (d > bd) { bd = d; bestK = k; }
+  }
+  if (bestK < 0) return;
+  fireballs.push({ c: surf.nb[b.c * 4 + bestK], prev: b.c, acc: 0, n: 0 });
+  Snd.sparx();
+}
+function updateFireballs(dt) {
+  for (const f of fireballs.slice()) {
+    if (hitsTrail(f.c)) { death(); fireballs.length = 0; return; }
+    f.acc += dt * 16 * surf.def.speed * enemySlow();
+    while (f.acc >= 1) {
+      f.acc -= 1;
+      const kp = nbIndex(f.c, f.prev), n = kp >= 0 ? surf.nb[f.c * 4 + ((kp + 2) & 3)] : -1;
+      if (n < 0 || grid[n] === WALL || ++f.n > 90) { fireballs.splice(fireballs.indexOf(f), 1); break; }
+      f.prev = f.c; f.c = n;
+      if (hitsTrail(f.c)) { death(); fireballs.length = 0; return; }
+    }
+  }
+}
+// 自機がさわって追い払う(カタツムリ・キノコ)
+function shoo(b) {
+  buddies.splice(buddies.indexOf(b), 1);
+  score += 500 * surf.def.pts;
+  const q = surf.screenOf(b.c);
+  floats.push({ x: q.x, y: q.y - 14, txt: BUDDIES[b.k].name + 'を追い払った +' + 500 * surf.def.pts, t: 1.4, col: '#9dffea' });
+  say('しっし!', 1.0, true);
+  Snd.blip();
+}
+// 囲まれて空き地でなくなった buddy: 味方は助ける、いたずら組はつかまえる
+function catchBuddies() {
+  for (const b of buddies.slice()) {
+    const role = bRole(b);
+    if (onLine(role) || role === 'ghost' || grid[b.c] !== WALL) continue;
+    buddies.splice(buddies.indexOf(b), 1);
+    const q = surf.screenOf(b.c), nm = BUDDIES[b.k].name;
+    if (role === 'ally') rescue(b, q);
+    else {
+      score += 800 * surf.def.pts;
+      floats.push({ x: q.x, y: q.y - 14, txt: nm + 'をつかまえた +' + 800 * surf.def.pts, t: 1.6, col: '#ffd76b', big: true });
+      say('つかまえた!', 1.2, true);
+    }
+    spawnParticles(q.x, q.y, 24, '#ffd76b');
+    rings.push({ x: q.x, y: q.y, t: 0.3, col: '#ffd76b' });
+  }
+}
+function rescue(b, q) {
+  const B = BUDDIES[b.k];
+  let msg = '';
+  if (B.perk === 'pts') { score += 2000; msg = '+2000'; }
+  else if (B.perk === 'life') { lives++; msg = '残機+1'; }
+  else if (B.perk === 'shield') { player.shield = true; msg = 'SHIELD'; }
+  else if (B.perk === 'slow') { slowT = CONFIG.SLOW_TIME; msg = '敵がのんびり'; }
+  else if (B.perk === 'star') { starT = CONFIG.STAR_TIME; msg = '得点2倍'; }
+  else if (B.perk === 'zap') { zapAll(); msg = 'SPARX一掃'; }
+  else if (B.perk === 'bomb') { msg = 'インクボム +' + inkBomb(b.c, 5) + 'マス'; }
+  checkExtend();
+  floats.push({ x: q.x, y: q.y - 14, txt: B.name + 'をたすけた! ' + msg, t: 2.0, col: '#9dffea', big: true });
+  say('ありがとう!', 1.4, true);
+  Snd.item();
+  stats.rescues = (stats.rescues || 0) + 1;
+  if (stats.rescues >= 5) unlock('rescue5');
+}
+// ブロブのインクボム: まわりの空き地を塗る(QIXのそばは塗らない)
+function inkBomb(c0, r) {
+  const qn = new Set();
+  for (const q of qixes) { const qc = surf.qixCell(q); qn.add(qc); for (let k = 0; k < 4; k++) qn.add(surf.nb[qc * 4 + k]); }
+  let cur = [c0], n = 0;
+  const seen = new Set(cur), pal = 5 + ((Math.random() * 4) | 0);
+  waveFrom = c0;
+  for (let d = 0; d <= r; d++) {
+    const nx = [];
+    for (const a of cur) {
+      if (grid[a] === OPEN && !qn.has(a)) { grid[a] = WALL; colA[a] = pal; markClaim(a); claimed++; n++; }
+      for (let k = 0; k < 4; k++) { const b = surf.nb[a * 4 + k]; if (b >= 0 && !seen.has(b) && grid[b] === OPEN) { seen.add(b); nx.push(b); } }
+    }
+    cur = nx;
+  }
+  fieldDirty = true;
+  collectItems(); crushSeekers();
+  return n;
+}
+function zapAll() {
+  for (const sp of sparxes) { const q = surf.screenOf(sp.c); spawnParticles(q.x, q.y, 20, '#ff7a4a'); }
+  sparxes = [];
+  sparxTimer = Math.min(sparxTimer, CONFIG.SPARX_INTERVAL * diff().interval * 0.5);  // しばらくしたらまた出る
+  for (const k of seekers) k.stun = 4;
+  shakeT = 0.25;
+}
+
+/* ---- buddy の絵(すべて図形で描く) ---- */
+function ol(path, fill, lw) { ctx.lineWidth = lw || 2.4; ctx.strokeStyle = '#1b1420'; ctx.stroke(path); ctx.fillStyle = fill; ctx.fill(path); }
+function circ(x, y, r) { const q = new Path2D(); q.arc(x, y, r, 0, Math.PI * 2); return q; }
+function ell(x, y, rx, ry, rot) { const q = new Path2D(); q.ellipse(x, y, rx, ry, rot || 0, 0, Math.PI * 2); return q; }
+function eyes(x, y, dx, r, look) {
+  for (const sx of [-1, 1]) {
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x + sx * dx, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1b1420'; ctx.beginPath(); ctx.arc(x + sx * dx + (look || 0) * r * 0.35, y + r * 0.1, r * 0.55, 0, Math.PI * 2); ctx.fill();
+  }
+}
+function sleepyEyes(x, y, dx, r) {
+  ctx.strokeStyle = '#1b1420'; ctx.lineWidth = 1.4;
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(x + sx * dx, y, r, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
+}
+// k: 種類, (x,y): 中心, s: 大きさ(1≒半径9px), b: 状態(省略可)
+function drawBuddy(k, x, y, s, b) {
+  const R = 9 * s, ph = b ? b.ph : blinkT, bob = Math.sin(ph * 3) * s;
+  ctx.save();
+  if (k === 'duck') {
+    ol(ell(x, y + bob, R, R * 0.82), '#ffd23f');
+    const bk = new Path2D(); bk.moveTo(x + R * 0.7, y - R * 0.1 + bob); bk.lineTo(x + R * 1.5, y + R * 0.1 + bob); bk.lineTo(x + R * 0.7, y + R * 0.35 + bob); bk.closePath(); ol(bk, '#ff8a1f', 1.6);
+    eyes(x + R * 0.25, y - R * 0.3 + bob, 0, R * 0.22, 1);
+  } else if (k === 'goose') {
+    ol(ell(x - R * 0.2, y + R * 0.3, R, R * 0.7), '#f4f4f4');
+    const nk = new Path2D(); nk.moveTo(x + R * 0.3, y + R * 0.1); nk.quadraticCurveTo(x + R * 0.6, y - R * 0.6, x + R * 0.5, y - R * 1.1);
+    ctx.lineWidth = R * 0.55; ctx.strokeStyle = '#1b1420'; ctx.lineCap = 'round'; ctx.stroke(nk); ctx.lineWidth = R * 0.38; ctx.strokeStyle = '#f4f4f4'; ctx.stroke(nk);
+    const bk = new Path2D(); bk.moveTo(x + R * 0.6, y - R * 1.25); bk.lineTo(x + R * 1.25, y - R * 1.05); bk.lineTo(x + R * 0.6, y - R * 0.9); bk.closePath(); ol(bk, '#ff8a1f', 1.4);
+    eyes(x + R * 0.45, y - R * 1.15, 0, R * 0.17, 1);
+  } else if (k === 'blob') {
+    const q = new Path2D(); q.arc(x, y - R * 0.1 + bob, R, Math.PI, 0);
+    q.quadraticCurveTo(x + R * 1.1, y + R * 0.8, x + R * 0.5, y + R * 0.7); q.quadraticCurveTo(x, y + R, x - R * 0.5, y + R * 0.7); q.quadraticCurveTo(x - R * 1.1, y + R * 0.8, x - R, y - R * 0.1 + bob);
+    ol(q, '#6bd96b');
+    eyes(x, y - R * 0.2 + bob, R * 0.38, R * 0.24);
+    ctx.strokeStyle = '#1b1420'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y + R * 0.15 + bob, R * 0.25, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+  } else if (k === 'cat' || k === 'chonk') {
+    const big = k === 'chonk', RR = big ? R * 1.5 : R, col = big ? '#9aa3b5' : '#f4a24c';
+    const ears = new Path2D();
+    for (const sx of [-1, 1]) { ears.moveTo(x + sx * RR * 0.9, y - RR * 0.3); ears.lineTo(x + sx * RR * 0.75, y - RR * 1.15); ears.lineTo(x + sx * RR * 0.2, y - RR * 0.75); ears.closePath(); }
+    ol(ears, col, 2);
+    ol(ell(x, y, RR, RR * (big ? 0.85 : 0.9)), col);
+    sleepyEyes(x, y - RR * 0.05, RR * 0.38, RR * 0.2);
+    ctx.strokeStyle = '#1b1420'; ctx.lineWidth = 1;
+    ctx.beginPath(); for (const sx of [-1, 1]) for (const dy of [-1, 1]) { ctx.moveTo(x + sx * RR * 0.45, y + RR * 0.3); ctx.lineTo(x + sx * RR * 1.1, y + RR * 0.3 + dy * RR * 0.15); } ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.font = "bold " + Math.round(9 * s) + "px 'Courier New', monospace"; ctx.textAlign = 'left';
+    ctx.fillText('z', x + RR * 0.9, y - RR * 0.9 - Math.sin(ph * 1.5) * 2); ctx.fillText('Z', x + RR * 1.2, y - RR * 1.4 - Math.sin(ph * 1.5 + 1) * 2);
+  } else if (k === 'dragon') {
+    const wing = new Path2D(); wing.moveTo(x - R * 0.2, y - R * 0.2); wing.lineTo(x - R * 1.4, y - R * 1.2 + Math.sin(ph * 4) * 2); wing.lineTo(x - R * 0.9, y + R * 0.2); wing.closePath(); ol(wing, '#2f8f5a', 1.6);
+    const hr = new Path2D(); for (const sx of [-1, 1]) { hr.moveTo(x + sx * R * 0.3, y - R * 0.7); hr.lineTo(x + sx * R * 0.55, y - R * 1.3); hr.lineTo(x + sx * R * 0.7, y - R * 0.55); hr.closePath(); }
+    ol(hr, '#ffe07a', 1.4);
+    ol(circ(x, y, R), '#4caf50');
+    ol(ell(x + R * 0.45, y + R * 0.3, R * 0.5, R * 0.35), '#a5e0a8', 1.4);
+    eyes(x - R * 0.05, y - R * 0.25, R * 0.32, R * 0.2, 1);
+    if (b && b.warn) {     // 火を吐く前: 口から煙、「!」(点滅なし)
+      ctx.fillStyle = 'rgba(255,140,60,0.8)'; ctx.beginPath(); ctx.arc(x + R * 1.1, y + R * 0.3, R * 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.font = "bold 15px 'Courier New', monospace"; ctx.textAlign = 'center'; ctx.fillText('!', x, y - R * 1.5);
+    }
+  } else if (k === 'octopus') {
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
+      const lx = x + (i - 1.5) * R * 0.5, lg = new Path2D();
+      lg.moveTo(lx, y + R * 0.4); lg.quadraticCurveTo(lx + Math.sin(ph * 4 + i) * R * 0.5, y + R * 1.1, lx + (i - 1.5) * R * 0.3, y + R * 1.4);
+      ctx.lineWidth = R * 0.42; ctx.strokeStyle = '#1b1420'; ctx.stroke(lg); ctx.lineWidth = R * 0.26; ctx.strokeStyle = '#ff6b8a'; ctx.stroke(lg);
+    }
+    ol(ell(x, y - R * 0.1 + bob, R, R * 0.85), '#ff6b8a');
+    eyes(x, y - R * 0.1 + bob, R * 0.35, R * 0.22);
+  } else if (k === 'owl') {
+    const tu = new Path2D(); for (const sx of [-1, 1]) { tu.moveTo(x + sx * R * 0.3, y - R * 0.7); tu.lineTo(x + sx * R * 0.75, y - R * 1.25); tu.lineTo(x + sx * R * 0.85, y - R * 0.5); tu.closePath(); }
+    ol(tu, '#8a5a36', 1.6);
+    ol(ell(x, y, R * 0.95, R * 1.05), '#a0724a');
+    ol(ell(x, y + R * 0.35, R * 0.55, R * 0.5), '#e7c9a0', 1.2);
+    eyes(x, y - R * 0.25, R * 0.4, R * 0.32);
+    const bk = new Path2D(); bk.moveTo(x - R * 0.12, y); bk.lineTo(x + R * 0.12, y); bk.lineTo(x, y + R * 0.22); bk.closePath(); ol(bk, '#ffb02e', 1);
+  } else if (k === 'penguin') {
+    ol(ell(x, y, R * 0.85, R * 1.1), '#222b3a');
+    ctx.fillStyle = '#f4f4f4'; ctx.beginPath(); ctx.ellipse(x, y + R * 0.2, R * 0.55, R * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+    eyes(x, y - R * 0.45, R * 0.28, R * 0.18);
+    const bk = new Path2D(); bk.moveTo(x - R * 0.2, y - R * 0.2); bk.lineTo(x + R * 0.2, y - R * 0.2); bk.lineTo(x, y + R * 0.05); bk.closePath(); ol(bk, '#ff8a1f', 1);
+  } else if (k === 'turtle') {
+    ol(circ(x + R * 0.95, y + R * 0.1 + bob, R * 0.38), '#9be07a', 1.8);
+    for (const lx of [-0.6, 0.5]) ol(ell(x + lx * R, y + R * 0.55, R * 0.25, R * 0.2), '#9be07a', 1.4);
+    const sh = new Path2D(); sh.arc(x, y + R * 0.3, R * 0.95, Math.PI, 0); sh.closePath(); ol(sh, '#3fa34d');
+    ctx.strokeStyle = '#1f5a2a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - R * 0.45, y + R * 0.3); ctx.lineTo(x - R * 0.2, y - R * 0.3); ctx.lineTo(x + R * 0.2, y - R * 0.3); ctx.lineTo(x + R * 0.45, y + R * 0.3); ctx.stroke();
+    ctx.fillStyle = '#1b1420'; ctx.beginPath(); ctx.arc(x + R * 1.05, y + bob, R * 0.08, 0, Math.PI * 2); ctx.fill();
+  } else if (k === 'snail') {
+    const bd = new Path2D(); bd.moveTo(x - R * 1.1, y + R * 0.6); bd.lineTo(x + R * 1.0, y + R * 0.6); bd.quadraticCurveTo(x + R * 1.3, y + R * 0.2, x + R * 0.9, y - R * 0.1); bd.lineTo(x + R * 0.5, y + R * 0.3); bd.closePath();
+    ol(bd, '#d8e07a', 1.8);
+    ctx.strokeStyle = '#1b1420'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(x + R * 0.95, y - R * 0.05); ctx.lineTo(x + R * 1.05, y - R * 0.7); ctx.moveTo(x + R * 0.8, y); ctx.lineTo(x + R * 0.75, y - R * 0.65); ctx.stroke();
+    ctx.fillStyle = '#1b1420'; ctx.beginPath(); ctx.arc(x + R * 1.05, y - R * 0.75, 1.3, 0, Math.PI * 2); ctx.arc(x + R * 0.75, y - R * 0.7, 1.3, 0, Math.PI * 2); ctx.fill();
+    ol(circ(x - R * 0.2, y - R * 0.05, R * 0.75), '#c98b4a');
+    ctx.strokeStyle = '#6e4420'; ctx.lineWidth = 1.4; ctx.beginPath();
+    for (let a = 0; a < Math.PI * 4; a += 0.2) { const rr = R * 0.6 * (1 - a / (Math.PI * 4.2)); const px = x - R * 0.2 + Math.cos(a) * rr, py = y - R * 0.05 + Math.sin(a) * rr; if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+    ctx.stroke();
+  } else if (k === 'ghost') {
+    const q = new Path2D(); q.arc(x, y - R * 0.1 + bob, R * 0.9, Math.PI, 0); q.lineTo(x + R * 0.9, y + R * 0.6 + bob);
+    q.quadraticCurveTo(x, y + R * 1.1 + bob, x - R * 0.9, y + R * 0.6 + bob); q.closePath();
+    ctx.globalAlpha = 0.55 + 0.25 * Math.sin(ph * 0.8);      // ゆっくり透ける(点滅ではない)
+    ol(q, '#eef2ff');
+    ol(ell(x - R * 1.0, y + R * 0.2 + bob, R * 0.25, R * 0.18, -0.5), '#eef2ff', 1.4);
+    ol(ell(x + R * 1.0, y + R * 0.2 + bob, R * 0.25, R * 0.18, 0.5), '#eef2ff', 1.4);
+    ctx.fillStyle = '#1b1420'; ctx.beginPath(); ctx.ellipse(x - R * 0.3, y - R * 0.2 + bob, R * 0.12, R * 0.2, 0, 0, Math.PI * 2); ctx.ellipse(x + R * 0.3, y - R * 0.2 + bob, R * 0.12, R * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ff8fb3'; ctx.beginPath(); ctx.ellipse(x, y + R * 0.3 + bob, R * 0.15, R * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+  } else if (k === 'axolotl') {
+    ctx.lineCap = 'round';
+    for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const a = (sx > 0 ? -0.5 : Math.PI + 0.5) + sx * (i - 1) * 0.5;
+      ctx.strokeStyle = '#ff5c8a'; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(x + sx * R * 0.7, y - R * 0.2); ctx.lineTo(x + sx * R * 0.7 + Math.cos(a) * R * 0.7, y - R * 0.2 + Math.sin(a) * R * 0.7); ctx.stroke();
+    }
+    ol(ell(x, y + bob, R, R * 0.8), '#ffb3c8');
+    eyes(x, y - R * 0.15 + bob, R * 0.45, R * 0.16);
+    ctx.strokeStyle = '#1b1420'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y + R * 0.15 + bob, R * 0.3, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+  } else if (k === 'capybara') {
+    const er = new Path2D(); er.arc(x - R * 0.5, y - R * 0.65, R * 0.2, 0, Math.PI * 2); er.moveTo(x + R * 0.1, y - R * 0.65); er.arc(x - R * 0.1, y - R * 0.65, R * 0.2, 0, Math.PI * 2);
+    ol(er, '#8a5a36', 1.2);
+    ol(ell(x, y, R * 1.15, R * 0.8), '#b07a4a');
+    ol(ell(x + R * 0.6, y + R * 0.15, R * 0.5, R * 0.42), '#8a5a36', 1.4);
+    ctx.fillStyle = '#1b1420'; ctx.fillRect(x + R * 0.05, y - R * 0.3, R * 0.25, R * 0.08);   // 半目(のんびり)
+    ctx.beginPath(); ctx.arc(x + R * 0.85, y + R * 0.1, R * 0.07, 0, Math.PI * 2); ctx.fill();
+  } else if (k === 'cactus') {
+    const q = new Path2D();
+    q.roundRect ? q.roundRect(x - R * 0.45, y - R * 1.1, R * 0.9, R * 2.1, R * 0.45) : q.rect(x - R * 0.45, y - R * 1.1, R * 0.9, R * 2.1);
+    q.moveTo(x - R * 0.45, y); q.roundRect ? q.roundRect(x - R * 1.1, y - R * 0.6, R * 0.5, R * 0.9, R * 0.25) : q.rect(x - R * 1.1, y - R * 0.6, R * 0.5, R * 0.9);
+    q.moveTo(x + R * 0.45, y); q.roundRect ? q.roundRect(x + R * 0.6, y - R * 0.9, R * 0.5, R * 0.9, R * 0.25) : q.rect(x + R * 0.6, y - R * 0.9, R * 0.5, R * 0.9);
+    ol(q, '#3fae6a', 2);
+    ctx.fillStyle = '#e8ffe0'; for (const [dx, dy] of [[-0.2, -0.6], [0.2, -0.2], [-0.2, 0.3], [0.2, 0.7]]) ctx.fillRect(x + dx * R, y + dy * R, 1.5, 1.5);
+    ol(circ(x, y - R * 1.15, R * 0.28), '#ff7ab8', 1.2);
+    eyes(x, y - R * 0.3, R * 0.2, R * 0.13);
+  } else if (k === 'robot') {
+    ctx.strokeStyle = '#1b1420'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y - R * 0.8 + bob); ctx.lineTo(x, y - R * 1.3 + bob); ctx.stroke();
+    ol(circ(x, y - R * 1.35 + bob, R * 0.18), '#ff5c5c', 1.2);
+    const q = new Path2D(); q.rect(x - R * 0.9, y - R * 0.8 + bob, R * 1.8, R * 1.6); ol(q, '#b8c2cc');
+    ol(ell(x, y - R * 0.2 + bob, R * 0.65, R * 0.28), '#5ee0ff', 1.4);
+    ctx.fillStyle = '#1b1420'; for (let i = -2; i <= 2; i++) ctx.fillRect(x + i * R * 0.22 - 1, y + R * 0.35 + bob, 2, R * 0.2);
+  } else if (k === 'rabbit') {
+    for (const sx of [-1, 1]) { ol(ell(x + sx * R * 0.35, y - R * 1.1 + bob, R * 0.22, R * 0.7, sx * 0.15), '#f4f4f4', 1.8); ctx.fillStyle = '#ffb3c8'; ctx.beginPath(); ctx.ellipse(x + sx * R * 0.35, y - R * 1.1 + bob, R * 0.1, R * 0.45, sx * 0.15, 0, Math.PI * 2); ctx.fill(); }
+    ol(ell(x, y + bob, R * 0.95, R * 0.85), '#f4f4f4');
+    eyes(x, y - R * 0.1 + bob, R * 0.35, R * 0.18);
+    ctx.fillStyle = '#ff7ab8'; ctx.beginPath(); ctx.arc(x, y + R * 0.2 + bob, R * 0.1, 0, Math.PI * 2); ctx.fill();
+  } else if (k === 'mushroom') {
+    ol(ell(x, y + R * 0.45, R * 0.5, R * 0.55), '#f3e3c3');
+    const cap = new Path2D(); cap.arc(x, y + R * 0.1, R, Math.PI, 0); cap.closePath(); ol(cap, '#e74c3c');
+    ctx.fillStyle = '#ffffff'; for (const [dx, dy, r] of [[-0.5, -0.3, 0.18], [0.3, -0.55, 0.14], [0.55, -0.1, 0.12], [-0.1, -0.1, 0.12]]) { ctx.beginPath(); ctx.arc(x + dx * R, y + dy * R, r * R, 0, Math.PI * 2); ctx.fill(); }
+    eyes(x, y + R * 0.45, R * 0.18, R * 0.12);
+  }
+  ctx.restore();
+}
+function drawBuddies() {
+  for (const f of fireballs) {
+    if (surf.is3D && !visA[f.c]) continue;
+    const q = surf.screenOf(f.c);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.arc(q.x, q.y, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ff7a2a'; ctx.beginPath(); ctx.arc(q.x, q.y, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffe07a'; ctx.beginPath(); ctx.arc(q.x - 1, q.y - 1, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+  for (const b of buddies) {
+    const q = surf.screenOf(b.c);
+    if (surf.is3D && !visA[b.c]) { drawOffMarker(q, BUDDIES[b.k].role === 'ally' ? '#9dffea' : '#ffd76b', 5); continue; }
+    ctx.globalAlpha = surf.is3D && surf.twoSided && !frontA[b.c] ? 0.35 : 1;
+    drawBuddy(b.k, q.x, q.y - 4 - (b.jump > 0 ? Math.sin(b.jump / 0.25 * Math.PI) * 8 : 0), 1, b);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ---- buddy図鑑 ---- */
+function drawDex(t) {
+  panel(30, 70, W - 60, 716);
+  ctx.textAlign = 'center';
+  const n = Object.keys(BUDDIES).filter(k => buddyMet[k]).length;
+  ctx.fillStyle = '#ffd76b'; ctx.font = "bold 22px 'Courier New', monospace";
+  ctx.fillText('buddy図鑑  ' + n + ' / ' + BUDDY_ORDER.length, W / 2, 106);
+  BUDDY_ORDER.forEach((k, i) => {
+    const col = i % 3, row = (i / 3) | 0, x = 116 + col * 204, y = 158 + row * 100, met = !!buddyMet[k], B = BUDDIES[k];
+    if (met) drawBuddy(k, x - 50, y + 8, 1.5, null);
+    else { ctx.fillStyle = '#2a3150'; ctx.beginPath(); ctx.arc(x - 50, y + 8, 13, 0, Math.PI * 2); ctx.fill(); }
+    ctx.textAlign = 'left';
+    ctx.fillStyle = met ? '#ffffff' : '#56608a'; ctx.font = "bold 13px 'Courier New', monospace";
+    ctx.fillText(met ? B.name : '？？？', x - 28, y);
+    ctx.fillStyle = met ? (B.role === 'ally' ? '#9dffea' : '#ffb27a') : '#3d4768'; ctx.font = "10px 'Courier New', monospace";
+    // 2行に分ける: 「。」があればそこで、なければ半分で
+    const txt = met ? B.txt : 'まだ会っていない', dot = txt.indexOf('。');
+    const cut = dot >= 0 && dot < txt.length - 1 ? dot + 1 : txt.length > 11 ? Math.ceil(txt.length / 2) : txt.length;
+    ctx.fillText(txt.slice(0, cut), x - 28, y + 16);
+    if (cut < txt.length) ctx.fillText(txt.slice(cut), x - 28, y + 29);
+  });
+  ctx.textAlign = 'center'; ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
+  ctx.fillText('Z / X / タップ でもどる', W / 2, 772);
+}
+
 /* ---------------- Clawd のひとこと(吹き出し) ---------------- */
 const speech = { txt: '', t: 0, cool: 0 };
 // force=false のときは連発しないよう1.5秒あける
@@ -2462,13 +2996,7 @@ function collectItems() {
     else if (it.k === 'shield') player.shield = true;
     else if (it.k === 'star') starT = CONFIG.STAR_TIME;
     else if (it.k === 'life') lives++;
-    else if (it.k === 'zap') {
-      for (const sp of sparxes) { const q = surf.screenOf(sp.c); spawnParticles(q.x, q.y, 20, '#ff7a4a'); }
-      sparxes = [];
-      sparxTimer = Math.min(sparxTimer, CONFIG.SPARX_INTERVAL * diff().interval * 0.5);  // しばらくしたらまた出る
-      for (const k of seekers) k.stun = 4;
-      shakeT = 0.25;
-    }
+    else if (it.k === 'zap') zapAll();
     itemsGot[it.k] = 1; store.set('qlaim.items', itemsGot);
     stats.items++;
     if (Object.keys(ITEMS).every(k => itemsGot[k])) unlock('items');
@@ -2778,7 +3306,8 @@ function drawHelp(t) {
   ctx.fillStyle = '#cdd8ff'; ctx.font = "13px 'Courier New', monospace";
   ['続けて囲むとコンボ。QIX 2体を線で分断すると即クリア',
    'QIXが描きかけの線をかすめると「ギリギリ!」ボーナス',
-   '5エリアごとに BONUS AREA。X を押す間は立体の全体が見える'].forEach((ln, i) => ctx.fillText(ln, W / 2, y + i * 22));
+   '5エリアごとに BONUS AREA。X を押す間は立体の全体が見える',
+   'buddyたちも登場! 迷子は囲んで助けよう(タイトルで B = 図鑑)'].forEach((ln, i) => ctx.fillText(ln, W / 2, y + i * 22));
   ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
   ctx.fillText('Z / X / タップ でもどる', W / 2, 762);
 }
@@ -2866,7 +3395,7 @@ function cycleMode(dir) {
 }
 
 // OPTIONS はタイトルからもポーズからも開ける。閉じると開いた画面へ戻る
-let optsFrom = 'title';
+let optsFrom = 'title', dexFrom = 'title';
 function openOptions() { optsFrom = state === 'pause' ? 'pause' : 'title'; optSel = 0; setState('options'); Snd.select(); }
 function closeOptions() {
   saveSettings(); Snd.select();
@@ -2921,6 +3450,7 @@ const OPT_ITEMS = [
   { k:'glow',  label:'発光',     vals:['OFF','ON'], bool:true },
   { k:'shake', label:'揺れ・振動', vals:['OFF','ON'], bool:true },
   { k:'skin',  label:'Clawdの色' },
+  { k:'_dex',  label:'buddy図鑑' },
   { k:'_achv', label:'実績を見る' },
   { k:'_stats', label:'あそんだ記録' },
   { k:'_back', label:'もどる' },
@@ -2931,6 +3461,7 @@ function adjustOpt(dir) {
   if (!it || it.k === '_back') return;
   if (it.k === '_achv') { setState('achv'); Snd.select(); return; }
   if (it.k === '_stats') { setState('stats'); Snd.select(); return; }
+  if (it.k === '_dex') { dexFrom = 'options'; setState('dex'); Snd.select(); return; }
   if (it.k === 'skin') {   // 解除済みの色だけを順に
     const op = skinsOpen(), i = Math.max(0, op.findIndex(k => k.name === settings.skin));
     settings.skin = op[(i + dir + op.length) % op.length].name;
@@ -3030,6 +3561,10 @@ function update(dt) {
   updateSparxes(dt);
   if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
   updateSeekers(dt);
+  if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
+  updateBuddies(dt);
+  if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
+  if (fieldDirty) { fieldDirty = false; redrawField(); }
   updateItems(dt);
   areaTime += dt;
   // 残機0(最後の1機)のときは心臓の鼓動
@@ -3386,6 +3921,7 @@ function drawBackView(t) {
   for (const it of items) dot(cw(it.c), ITEMS[it.k].col, 3);
   for (const sp of sparxes) dot(cw(sp.c), '#ff5a28', 3);
   for (const k of seekers) dot(cw(k.c), '#ff5cf0', 3.5);
+  for (const b of buddies) dot(cw(b.c), BUDDIES[b.k].role === 'ally' ? '#9dffea' : '#ffd76b', 3);
   for (const q of qixes) dot(S.world(q.p || [q.x, q.y]), qixStroke(q.hue, 60, 1), 4.5);
   ctx.fillStyle = '#8fa3d9';
   ctx.font = "bold 10px 'Courier New', monospace";
@@ -3407,7 +3943,8 @@ function render() {
   else render2D(t);
   drawItems();
   drawSeekers();
-  if (surf.is3D && !['title', 'options', 'achv', 'stats', 'help', 'ending'].includes(state)) drawBackView(t);
+  drawBuddies();
+  if (surf.is3D && !['title', 'options', 'achv', 'stats', 'help', 'ending', 'dex'].includes(state)) drawBackView(t);
   if (state === 'play' || state === 'ready' || state === 'pause') drawStatus();
   if (tutorStep >= 0 && (state === 'play' || state === 'ready')) drawTutor(t);
 
@@ -3901,6 +4438,7 @@ function renderOverlay() {
   const t = theme();
   if (state === 'ending') { drawEnding(t); return; }
   if (state === 'help') { drawHelp(t); return; }
+  if (state === 'dex') { drawDex(t); return; }
   const blinkOn = true;   // 文字は点滅させない(目にやさしく)
   ctx.textAlign = 'center';
 
@@ -3979,7 +4517,7 @@ function renderOverlay() {
     ctx.fillText('OPTIONS  [X / O]', W / 2, 639);
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "bold 11px 'Courier New', monospace";
-    ctx.fillText('H あそびかた / P ポーズ / M 消音 / C スクリーンショット', W / 2, 666);
+    ctx.fillText('H あそびかた / B buddy図鑑 / P ポーズ / M 消音 / C スクショ', W / 2, 666);
 
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "bold 13px 'Courier New', monospace";
@@ -4028,7 +4566,7 @@ function renderOverlay() {
     ctx.font = "bold 24px 'Courier New', monospace";
     ctx.fillText('実績  ' + n + ' / ' + ACHV.length, W / 2, 132);
     ACHV.forEach((a, i) => {
-      const y = 166 + i * 31, got = !!achvGot[a.id];
+      const y = 160 + i * 28.5, got = !!achvGot[a.id];
       ctx.textAlign = 'left';
       ctx.fillStyle = got ? '#ffd76b' : '#3d4768';
       ctx.font = "bold 15px 'Courier New', monospace";
@@ -4051,14 +4589,14 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 206, dy = 36;
+    const y0 = 202, dy = 33;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
-      optRects.push({ x: 76, y: y - 24, w: W - 152, h: 32, idx: i });
+      optRects.push({ x: 76, y: y - 22, w: W - 152, h: 30, idx: i });
       const sel = i === optSel;
       if (sel) {
         ctx.fillStyle = 'rgba(90,120,220,.18)';
-        ctx.fillRect(76, y - 24, W - 152, 32);
+        ctx.fillRect(76, y - 22, W - 152, 30);
         ctx.fillStyle = t.accent;
         ctx.font = "bold 17px 'Courier New', monospace";
         ctx.textAlign = 'left';
@@ -4070,7 +4608,7 @@ function renderOverlay() {
       ctx.fillText(it.label, 116, y);
 
       ctx.textAlign = 'right';
-      if (it.k === '_back' || it.k === '_achv' || it.k === '_stats') {
+      if (it.k === '_back' || it.k === '_achv' || it.k === '_stats' || it.k === '_dex') {
         // 値なし
       } else if (it.min != null && it.max === 10) {
         // 音量バー
@@ -4147,6 +4685,11 @@ function renderOverlay() {
       if (bonusT > 0) {
         ctx.fillStyle = '#ff9ee8';
         ctx.fillText('BONUS AREA ─ ' + CONFIG.BONUS_TIME + '秒で好きなだけ囲め! 敵はQIXだけ', W / 2, y);
+        y += 24;
+      }
+      if (buddies.length) {
+        ctx.fillStyle = '#9dffea';
+        ctx.fillText('buddy: ' + buddies.map(b => BUDDIES[b.k].name).join('・'), W / 2, y);
         y += 24;
       }
       if (seekers.length) {
@@ -4334,6 +4877,11 @@ function onKeyDown(e) {
     e.preventDefault(); return;
   }
   if ((k === 'h' || k === 'H') && state === 'title') { openHelp(); e.preventDefault(); return; }
+  if ((k === 'b' || k === 'B') && state === 'title') { dexFrom = 'title'; setState('dex'); Snd.select(); e.preventDefault(); return; }
+  if (state === 'dex') {
+    if (k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'Escape' || k === 'Enter' || k === ' ' || k === 'b' || k === 'B') { setState(dexFrom); Snd.select(); }
+    e.preventDefault(); return;
+  }
 
   // 実績一覧・記録: どのボタンでも OPTIONS へ戻る
   if (state === 'achv' || state === 'stats') {
@@ -4524,6 +5072,7 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
   if (state === 'achv' || state === 'stats') { setState('options'); Snd.select(); return; }
+  if (state === 'dex') { setState(dexFrom); Snd.select(); return; }
   if (state === 'help') { closeHelp(); return; }
   if (state === 'options') {
     const row = optRects.find(r => inRect(p, r));
