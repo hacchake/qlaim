@@ -557,6 +557,39 @@ function entryNext() {
   setState('over');
 }
 
+/* ---- 実績 ----
+   達成すると画面上部に表示。OPTIONS の「実績を見る」で一覧 */
+const ACHV = [
+  { id:'first',    name:'はじめの一歩',   txt:'どこかのエリアをクリア' },
+  { id:'split',    name:'一刀両断',       txt:'QIXを分断してクリア' },
+  { id:'nomiss',   name:'ノーミス',       txt:'1回もミスせずにエリアクリア' },
+  { id:'speed',    name:'スピードスター', txt:'60秒以内にエリアクリア' },
+  { id:'pct90',    name:'ほぼ全部',       txt:'占領率90%以上でクリア' },
+  { id:'slowonly', name:'じっくり派',     txt:'Zを使わずにエリアクリア' },
+  { id:'big30',    name:'大風呂敷',       txt:'一度に30%以上を囲む' },
+  { id:'combo',    name:'れんぞく技',     txt:'コンボ倍率を最大(×3)にする' },
+  { id:'seeker',   name:'追っ手を撃退',   txt:'SEEKERを囲んで倒す' },
+  { id:'items',    name:'コレクター',     txt:'4種類のアイテムを全部取る' },
+  { id:'area10',   name:'遠くまで来た',   txt:'AREA 10 に到達' },
+  { id:'daily',    name:'今日の3面',      txt:'DAILYで3面クリア' },
+  { id:'klein',    name:'裏も表もない',   txt:'クラインの壺をクリア' },
+  { id:'platonic', name:'プラトンの立体', txt:'正多面体5種をすべてクリア' },
+  { id:'stars',    name:'星をつかむ',     txt:'星型3種をすべてクリア' },
+  { id:'all',      name:'全制覇',         txt:'すべての盤面をクリア' },
+];
+const achvGot = store.get('qlaim.ach', {});
+const itemsGot = store.get('qlaim.items', {});      // これまでに取ったアイテムの種類
+let achvToasts = [];                                  // 表示待ちの実績 { a, t }
+function unlock(id) {
+  if (achvGot[id]) return false;
+  achvGot[id] = todayStr();
+  store.set('qlaim.ach', achvGot);
+  const a = ACHV.find(x => x.id === id);
+  if (a) { achvToasts.push({ a, t: 0 }); Snd.extend(); }
+  return true;
+}
+const hasAll = keys => keys.every(k => bestPct[k] != null);
+
 // 盤面ごとのクリア時の最高占領率(%)。クリアした盤面だけ入る
 const bestPct = store.get('qlaim.best', {});
 function saveBest() {
@@ -1486,6 +1519,7 @@ let guarded = false;            // SHIELD でミスを防いだ最中
 let areaTime = 0;               // このエリアの経過時間
 let pauseSel = 0;               // ポーズメニューの選択行
 let continues = 0;              // このゲームでコンティニューした回数
+let areaMiss = 0, areaFast = false;   // このエリアでのミス数 / Zを使ったか(実績用)
 /* チュートリアル: 初めての1ゲームだけ、やることを順に教える
    0:歩く → 1:空き地へ出て線を引く → 2:線につないで囲む → 3:クリア条件(数秒で終わり)
    settings.tutor が true になったら二度と出ない */
@@ -1599,6 +1633,7 @@ function initLevel(lv) {
   items = []; itemTimer = CONFIG.ITEM_INTERVAL * 0.6;
   seekers = [];
   slowT = 0; starT = 0; combo = 0; comboT = 0; guarded = false; areaTime = 0;
+  areaMiss = 0; areaFast = false;
   const s = surf.setup();
   homeCell = s.home;
   initOpen = 0;
@@ -1806,7 +1841,7 @@ function enterTrail(n) {
   grid[n] = TRAIL;
   trail.push(n);
   player.prev = player.c; player.c = n;
-  if (held.fast) player.usedFast = true;
+  if (held.fast) { player.usedFast = true; areaFast = true; }
   Snd.updateDraw(trail.length, !player.usedFast);
 }
 
@@ -1867,6 +1902,8 @@ function closeTrail() {
     // 一度に大きく囲んだらボーナス
     const gp = gained / initOpen * 100;
     let bonus = 0;
+    if (gp >= 30) unlock('big30');
+    if (1 + combo * CONFIG.COMBO_STEP >= CONFIG.COMBO_MAX) unlock('combo');
     if (gp >= CONFIG.BIG_CLAIM) {
       bonus = Math.round(gp * CONFIG.BIG_CLAIM_PTS);
       floats.push({ x: W / 2, y: H * 0.45, txt: 'BIG CLAIM +' + bonus, t: 1.6, col: '#8dff9e', big: true });
@@ -1950,6 +1987,7 @@ function crushSeekers() {
     seekers.splice(seekers.indexOf(k), 1);
     const p = surf.screenOf(k.c);
     score += CONFIG.SEEKER_BONUS;
+    unlock('seeker');
     floats.push({ x: p.x, y: p.y - 12, txt: 'SEEKER DOWN +' + CONFIG.SEEKER_BONUS, t: 1.6, col: '#ff5cf0', big: true });
     spawnParticles(p.x, p.y, 36, '#ff5cf0');
     rings.push({ x: p.x, y: p.y, t: 0.2, col: '#ff5cf0' });
@@ -2012,6 +2050,8 @@ function collectItems() {
     else if (it.k === 'shield') player.shield = true;
     else if (it.k === 'star') starT = CONFIG.STAR_TIME;
     else if (it.k === 'life') lives++;
+    itemsGot[it.k] = 1; store.set('qlaim.items', itemsGot);
+    if (Object.keys(ITEMS).every(k => itemsGot[k])) unlock('items');
     floats.push({ x: p.x, y: p.y - 14, txt: I.label + '!  ' + I.txt, t: 1.8, col: I.col, big: true });
     spawnParticles(p.x, p.y, 26, I.col);
     rings.push({ x: p.x, y: p.y, t: 0.3, col: I.col });
@@ -2148,7 +2188,7 @@ function death() {
 }
 
 function applyDeath() {
-  if (!guarded) lives--;
+  if (!guarded) { lives--; areaMiss++; }
   guarded = false;
   for (const c of trail) grid[c] = OPEN; // 軌跡は消える
   trail = [];
@@ -2194,6 +2234,7 @@ function startClear(split) {
   checkExtend();
   saveHi();
   saveBest();
+  checkClearAchv(split);
   Snd.stopDraw();
   Bgm.stop();
   if (!split) Snd.clear_();
@@ -2214,8 +2255,23 @@ function continueGame() {
 }
 function giveUp() { if (canContinue()) { stTimer = CONFIG.CONTINUE_TIME; Snd.blip(); } }
 
+function checkClearAchv(split) {
+  unlock('first');
+  if (split) unlock('split');
+  if (areaMiss === 0) unlock('nomiss');
+  if (areaTime < 60) unlock('speed');
+  if (percent() >= 90) unlock('pct90');
+  if (!areaFast) unlock('slowonly');
+  if (surf.key === 'KLEIN') unlock('klein');
+  if (settings.mode === 'DAILY' && level >= 3) unlock('daily');
+  if (hasAll(['TETRA', 'CUBE', 'OCTA', 'DODECA', 'ICOSA'])) unlock('platonic');
+  if (hasAll(['STELLA', 'SSD', 'GSD'])) unlock('stars');
+  if (hasAll(Object.keys(CONFIG.SURF))) unlock('all');
+}
+
 function nextLevel() {
   level++;
+  if (level >= 10) unlock('area10');
   initLevel(level);
   setState('ready');
   Bgm.play(bgmName());
@@ -2283,12 +2339,14 @@ const OPT_ITEMS = [
   { k:'crt',   label:'CRT効果',  vals:['OFF','ON'], bool:true },
   { k:'glow',  label:'発光',     vals:['OFF','ON'], bool:true },
   { k:'shake', label:'画面揺れ', vals:['OFF','ON'], bool:true },
+  { k:'_achv', label:'実績を見る' },
   { k:'_back', label:'もどる' },
 ];
 
 function adjustOpt(dir) {
   const it = OPT_ITEMS[optSel];
   if (!it || it.k === '_back') return;
+  if (it.k === '_achv') { setState('achv'); Snd.select(); return; }
   if (it.bool) {
     settings[it.k] = !settings[it.k];
     if (it.k === 'crt') applyCrt();
@@ -2319,7 +2377,12 @@ function updateParticles(dt) {
   for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 50 * dt; p.t -= dt; }
   particles = particles.filter(p => p.t > 0);
 }
+function updateToasts(dt) {
+  // 溜まっているときは早送り(1件あたり 2.6秒 → 1.2秒)
+  if (achvToasts.length) { achvToasts[0].t += dt * (achvToasts.length > 2 ? 2.2 : 1); if (achvToasts[0].t > 2.6) achvToasts.shift(); }
+}
 function updateFloats(dt) {
+  updateToasts(dt);
   for (const f of floats) { f.y -= 20 * dt; f.t -= dt; }
   floats = floats.filter(f => f.t > 0);
 }
@@ -2533,6 +2596,21 @@ function drawStatus() {
     ctx.fillRect(x - 6 - 60, y + 19, 60 * comboT / CONFIG.COMBO_TIME, 2);
   }
 }
+// 実績解除のお知らせ(上から降りてくる)
+function drawToast(t) {
+  const q = achvToasts[0];
+  if (!q) return;
+  const slide = Math.min(1, q.t * 5, (2.6 - q.t) * 5), y = FIELD_Y - 40 + slide * 70;
+  ctx.fillStyle = 'rgba(20,14,4,0.92)';
+  ctx.fillRect(W / 2 - 190, y - 22, 380, 44);
+  ctx.strokeStyle = '#ffd76b'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 189, y - 21, 378, 42);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd76b'; ctx.font = "bold 12px 'Courier New', monospace";
+  ctx.fillText('★ 実績解除 ★', W / 2, y - 5);
+  ctx.fillStyle = '#ffffff'; ctx.font = "bold 15px 'Courier New', monospace";
+  ctx.fillText(q.a.name + ' ─ ' + q.a.txt, W / 2, y + 14);
+}
+
 // チュートリアルの帯(画面上部)
 function drawTutor(t) {
   const y = FIELD_Y + 58, a = Math.min(1, tutorT * 3);   // 状態表示の下(右下の裏側ビューと重ならない)
@@ -2599,7 +2677,7 @@ function render() {
   else render2D(t);
   drawItems();
   drawSeekers();
-  if (surf.is3D && state !== 'title' && state !== 'options') drawBackView(t);
+  if (surf.is3D && state !== 'title' && state !== 'options' && state !== 'achv') drawBackView(t);
   if (state === 'play' || state === 'ready' || state === 'pause') drawStatus();
   if (tutorStep >= 0 && (state === 'play' || state === 'ready')) drawTutor(t);
 
@@ -2634,6 +2712,7 @@ function render() {
 
   renderHUD();
   renderOverlay();
+  drawToast(t);
   ctx.restore();
   if (settings.glow) drawBloom();
 }
@@ -3103,6 +3182,29 @@ function renderOverlay() {
     return;
   }
 
+  if (state === 'achv') {
+    panel(40, 90, W - 80, 690);
+    const n = ACHV.filter(a => achvGot[a.id]).length;
+    ctx.fillStyle = '#ffd76b';
+    ctx.font = "bold 24px 'Courier New', monospace";
+    ctx.fillText('実績  ' + n + ' / ' + ACHV.length, W / 2, 132);
+    ACHV.forEach((a, i) => {
+      const y = 170 + i * 36, got = !!achvGot[a.id];
+      ctx.textAlign = 'left';
+      ctx.fillStyle = got ? '#ffd76b' : '#3d4768';
+      ctx.font = "bold 15px 'Courier New', monospace";
+      ctx.fillText((got ? '★ ' : '・ ') + a.name, 64, y);
+      ctx.fillStyle = got ? '#cdd8ff' : '#56608a';
+      ctx.font = "12px 'Courier New', monospace";
+      ctx.fillText(a.txt, 250, y);
+    });
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#6d7ba8';
+    ctx.font = "bold 12px 'Courier New', monospace";
+    ctx.fillText('Z / X / タップ でもどる', W / 2, 766);
+    return;
+  }
+
   if (state === 'options') {
     panel(60, 130, W - 120, 560);
     ctx.fillStyle = '#ffffff';
@@ -3110,14 +3212,14 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 226, dy = 44;
+    const y0 = 222, dy = 40;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
-      optRects.push({ x: 76, y: y - 28, w: W - 152, h: 40, idx: i });
+      optRects.push({ x: 76, y: y - 26, w: W - 152, h: 36, idx: i });
       const sel = i === optSel;
       if (sel) {
         ctx.fillStyle = 'rgba(90,120,220,.18)';
-        ctx.fillRect(76, y - 28, W - 152, 40);
+        ctx.fillRect(76, y - 26, W - 152, 36);
         ctx.fillStyle = t.accent;
         ctx.font = "bold 17px 'Courier New', monospace";
         ctx.textAlign = 'left';
@@ -3129,7 +3231,7 @@ function renderOverlay() {
       ctx.fillText(it.label, 116, y);
 
       ctx.textAlign = 'right';
-      if (it.k === '_back') {
+      if (it.k === '_back' || it.k === '_achv') {
         // 値なし
       } else if (it.min != null && it.max === 10) {
         // 音量バー
@@ -3353,6 +3455,12 @@ function onKeyDown(e) {
     e.preventDefault(); return;
   }
 
+  // 実績一覧: どのボタンでも OPTIONS へ戻る
+  if (state === 'achv') {
+    if (k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'Escape' || k === 'Enter' || k === ' ') { setState('options'); Snd.select(); }
+    e.preventDefault(); return;
+  }
+
   // OPTIONS画面の操作
   if (state === 'options') {
     if (k === 'ArrowUp'   || k === 'w' || k === 'W') { optSel = (optSel + OPT_ITEMS.length - 1) % OPT_ITEMS.length; Snd.blip(); }
@@ -3499,6 +3607,7 @@ cv.addEventListener('pointerdown', e => {
     else startGame();
     return;
   }
+  if (state === 'achv') { setState('options'); Snd.select(); return; }
   if (state === 'options') {
     const row = optRects.find(r => inRect(p, r));
     if (!row) return;

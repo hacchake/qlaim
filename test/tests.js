@@ -626,5 +626,31 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('コンティニュー表示が例外なし', !err, err);
 }
 
+
+// ---- 43) 実績 ----
+{
+  for (const k in achvGot) delete achvGot[k];
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  areaTime = 30; claimed = Math.ceil(initOpen * 0.92); startClear(false);
+  assert('クリアで実績(初クリア・ノーミス・スピード・90%・Z不使用)',
+    ['first', 'nomiss', 'speed', 'pct90', 'slowonly'].every(id => achvGot[id]), Object.keys(achvGot).join(','));
+  assert('実績のお知らせが出る', achvToasts.length >= 1);
+  for (let i = 0; i < 3000 && achvToasts.length; i++) updateFloats(1/30);
+  assert('お知らせは時間で消える', achvToasts.length === 0);
+  assert('同じ実績は二度出ない', unlock('first') === false);
+  for (const k of Object.keys(ITEMS)) itemsGot[k] = 1;
+  startGame(); stTimer = 2; tickMeta(0.016); items = [{ c: 0, k: 'star', t: 0 }]; grid[0] = WALL; collectItems();
+  assert('アイテム4種で「コレクター」', !!achvGot.items);
+  for (const k of ['TETRA', 'CUBE', 'OCTA', 'DODECA', 'ICOSA']) bestPct[k] = 80;
+  checkClearAchv(false);
+  assert('正多面体5種で「プラトンの立体」', !!achvGot.platonic && !achvGot.all);
+  setState('options'); optSel = OPT_ITEMS.findIndex(o => o.k === '_achv'); adjustOpt(1);
+  assert('OPTIONSから実績一覧へ', state === 'achv');
+  let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('実績一覧の描画が例外なし', !err, err);
+  onKeyDown({ key: 'z', repeat: false, preventDefault() {} });
+  assert('Zで戻る', state === 'options');
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
