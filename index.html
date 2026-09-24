@@ -2517,6 +2517,52 @@ function continueGame() {
 }
 function giveUp() { if (canContinue()) { stTimer = CONFIG.CONTINUE_TIME; Snd.blip(); } }
 
+/* ---- あそびかた(ヘルプ)。タイトルの H キー、ポーズメニューから ---- */
+let helpFrom = 'title';
+function openHelp() { helpFrom = state === 'pause' ? 'pause' : 'title'; setState('help'); Snd.select(); }
+function closeHelp() { setState(helpFrom); Snd.select(); }
+function drawHelp(t) {
+  panel(40, 80, W - 80, 700);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#9dffea';
+  ctx.font = "bold 24px 'Courier New', monospace";
+  ctx.fillText('あそびかた', W / 2, 120);
+  const row = (y, icon, name, txt) => {
+    icon(96, y - 5);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffffff'; ctx.font = "bold 15px 'Courier New', monospace";
+    ctx.fillText(name, 130, y);
+    ctx.fillStyle = '#aab6dd'; ctx.font = "12px 'Courier New', monospace";
+    ctx.fillText(txt, 250, y);
+    ctx.textAlign = 'center';
+  };
+  const fake = { c: 7, wait: 0, hist: [], ph: blinkT, stun: 0 };
+  row(162, (x, y) => drawClawd(x, y, 1.8, { moving: true, walkF: Math.floor(blinkT * 8) & 1 }), 'Clawd', 'あなた。空き地へ進むと線を引く(Zで速く)');
+  row(206, (x, y) => {
+    ctx.strokeStyle = qixStroke(blinkT * 90, 60, 1); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x - 12, y + 8); ctx.lineTo(x + 12, y - 8); ctx.stroke();
+  }, 'QIX', '空き地を動く。描きかけの線に触れるとミス');
+  row(250, (x, y) => drawSparx(x, y, fake), 'SPARX', '線の上を走る赤い火花。触れるとミス');
+  row(294, (x, y) => {
+    ctx.fillStyle = '#c231b8'; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + 2, y, 3, 0, Math.PI * 2); ctx.fill();
+  }, 'SEEKER', 'AREA 4〜。線を追ってくる。囲めば倒せる');
+  row(338, (x, y) => { ctx.fillStyle = '#ff9e3d'; ctx.fillRect(x - 2, y - 2, 5, 5); }, '導火線', '描く途中で止まると火がつき、線をさかのぼる');
+  let y = 392;
+  ctx.fillStyle = '#ffd76b'; ctx.font = "bold 14px 'Courier New', monospace";
+  ctx.fillText('── アイテム(線で囲むと手に入る)──', W / 2, y - 12);
+  for (const k of Object.keys(ITEMS)) {
+    y += 44;
+    row(y, (x, yy) => drawItem({ c: 0, k, t: 0 }, { x, y: yy }, false), ITEMS[k].label, ITEMS[k].txt);
+  }
+  y += 50;
+  ctx.fillStyle = '#cdd8ff'; ctx.font = "13px 'Courier New', monospace";
+  ['続けて囲むとコンボ。QIX 2体を線で分断すると即クリア',
+   '5エリアごとに BONUS AREA。X を押す間は立体の全体が見える'].forEach((ln, i) => ctx.fillText(ln, W / 2, y + i * 22));
+  ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
+  ctx.fillText('Z / X / タップ でもどる', W / 2, 762);
+}
+
 /* ---- エンディング(TOUR 1周) ---- */
 function startEnding() {
   setState('ending');
@@ -2630,13 +2676,14 @@ function togglePause() {
   if (state === 'pause') doResume();
   else { doPause(); pauseSel = 0; }
 }
-const PAUSE_ITEMS = ['つづける', 'はじめから', 'OPTIONS', 'タイトルへ'];
+const PAUSE_ITEMS = ['つづける', 'はじめから', 'OPTIONS', 'あそびかた', 'タイトルへ'];
 let pauseRects = [];
 function pauseChoose(i) {
   Snd.select();
   if (i === 0) doResume();
   else if (i === 1) startGame();
   else if (i === 2) openOptions();
+  else if (i === 3) openHelp();
   else { Snd.stopDraw(); backToTitle(); }
 }
 
@@ -3114,7 +3161,7 @@ function render() {
   drawDangerEdge();
   drawItems();
   drawSeekers();
-  if (surf.is3D && !['title', 'options', 'achv', 'stats'].includes(state)) drawBackView(t);
+  if (surf.is3D && !['title', 'options', 'achv', 'stats', 'help', 'ending'].includes(state)) drawBackView(t);
   if (state === 'play' || state === 'ready' || state === 'pause') drawStatus();
   if (tutorStep >= 0 && (state === 'play' || state === 'ready')) drawTutor(t);
 
@@ -3575,6 +3622,7 @@ function panel(x, y, w, h) {
 function renderOverlay() {
   const t = theme();
   if (state === 'ending') { drawEnding(t); return; }
+  if (state === 'help') { drawHelp(t); return; }
   const blinkOn = Math.sin(blinkT * 5) > -0.2;
   ctx.textAlign = 'center';
 
@@ -3652,7 +3700,7 @@ function renderOverlay() {
     ctx.fillText('OPTIONS  [X / O]', W / 2, 639);
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "bold 11px 'Courier New', monospace";
-    ctx.fillText('P ポーズ / M 消音 / C スクリーンショット', W / 2, 666);
+    ctx.fillText('H あそびかた / P ポーズ / M 消音 / C スクリーンショット', W / 2, 666);
 
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "bold 13px 'Courier New', monospace";
@@ -3818,7 +3866,7 @@ function renderOverlay() {
   }
 
   if (state === 'pause') {
-    panel(150, 290, W - 300, 300);
+    panel(150, 290, W - 300, 344);
     ctx.fillStyle = '#ffffff';
     ctx.font = "bold 26px 'Courier New', monospace";
     ctx.fillText('PAUSE', W / 2, 350);
@@ -3833,7 +3881,7 @@ function renderOverlay() {
     });
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "12px 'Courier New', monospace";
-    ctx.fillText('↑↓ 選択 / Z 決定 / P 再開', W / 2, 572);
+    ctx.fillText('↑↓ 選択 / Z 決定 / P 再開', W / 2, 618);
     return;
   }
 
@@ -3980,6 +4028,12 @@ function onKeyDown(e) {
     floats.push({ x: W / 2, y: H / 2, txt: m ? 'MUTE' : 'SOUND ON', t: 1.0, col: '#cdd8ff' });
     e.preventDefault(); return;
   }
+
+  if (state === 'help') {
+    if (k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'Escape' || k === 'Enter' || k === ' ' || k === 'h' || k === 'H') closeHelp();
+    e.preventDefault(); return;
+  }
+  if ((k === 'h' || k === 'H') && state === 'title') { openHelp(); e.preventDefault(); return; }
 
   // 実績一覧・記録: どのボタンでも OPTIONS へ戻る
   if (state === 'achv' || state === 'stats') {
@@ -4153,6 +4207,7 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
   if (state === 'achv' || state === 'stats') { setState('options'); Snd.select(); return; }
+  if (state === 'help') { closeHelp(); return; }
   if (state === 'options') {
     const row = optRects.find(r => inRect(p, r));
     if (!row) return;

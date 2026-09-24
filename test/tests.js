@@ -456,7 +456,7 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('ポーズでメニュー', state === 'pause' && pauseSel === 0);
   pauseChoose(1);
   assert('「はじめから」でAREA1から', state === 'ready' && level === 1);
-  stTimer = 2; tickMeta(0.016); togglePause(); pauseChoose(3);
+  stTimer = 2; tickMeta(0.016); togglePause(); pauseChoose(4);
   assert('「タイトルへ」', state === 'title');
   assert('なぞりの向き', dirFromDrag(30, 5) === 'right' && dirFromDrag(-3, -40) === 'up' && dirFromDrag(-50, 10) === 'left' && dirFromDrag(2, 9) === 'down');
   let err = null;
@@ -971,6 +971,22 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
 
 // ---- 70) 盤面の豆知識 ----
 assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SURF_INFO[k]));
+
+
+// ---- 71) あそびかた ----
+{
+  settings.mode = 'PLANE'; backToTitle();
+  onKeyDown({ key: 'h', repeat: false, preventDefault() {} });
+  assert('タイトルでHを押すとあそびかた', state === 'help');
+  let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('あそびかたの描画が例外なし', !err, err);
+  onKeyDown({ key: 'z', repeat: false, preventDefault() {} });
+  assert('Zでタイトルへ戻る', state === 'title');
+  startGame(); stTimer = 2; tickMeta(0.016); togglePause(); pauseChoose(3);
+  assert('ポーズからあそびかた', state === 'help');
+  closeHelp();
+  assert('閉じるとポーズへ', state === 'pause');
+}
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
