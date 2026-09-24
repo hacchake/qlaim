@@ -998,5 +998,13 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   assert('Rですぐもう一度', state === 'ready' && level === 1 && score === 0);
 }
 
+
+// ---- 73) 振動 ----
+{
+  settings.shake = false;
+  assert('画面揺れOFFなら振動しない', buzz(100) === false);
+  settings.shake = true;
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

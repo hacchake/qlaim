@@ -2064,6 +2064,7 @@ function closeTrail() {
       snapPlayerToBoundary();
       shakeT = 0.4;
       Snd.split();
+      buzz(150, 0.8);
       startClear(true);
       return;
     }
@@ -2093,6 +2094,7 @@ function closeTrail() {
       bonus = Math.round(gp * CONFIG.BIG_CLAIM_PTS);
       floats.push({ x: W / 2, y: H * 0.45, txt: 'BIG CLAIM +' + bonus, t: 1.6, col: '#8dff9e', big: true });
       say(pick(['すごい!', 'どーん!', 'ひろい!']), 1.6, true);
+      buzz(60, 0.5);
       Snd.big();
     }
     score += pts + bonus;
@@ -2420,6 +2422,7 @@ function updateSparxes(dt) {
 function death() {
   if (player.invuln > 0 || deathTimer > 0 || isZen()) return;
   guarded = player.shield;     // SHIELD があれば残機は減らない(線は消える)
+  buzz(guarded ? 80 : 200, guarded ? 0.4 : 1);
   say(guarded ? 'セーフ!' : 'うわっ!', 1.0, true);
   player.shield = false;
   deathTimer = guarded ? 0.6 : 1.2;
@@ -4161,6 +4164,16 @@ function padKeys(gp) {
   return on;
 }
 let padPrev = new Set();
+// 振動: スマホ(vibrate)とゲームパッド(ランブル)。「画面揺れ」OFFなら振動もしない
+function buzz(ms, strong) {
+  if (!settings.shake || typeof navigator === 'undefined') return false;
+  try {
+    if (navigator.vibrate) navigator.vibrate(ms);
+    const gp = navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.vibrationActuator) : null;
+    if (gp) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong || 0.6, weakMagnitude: 0.4 });
+  } catch (e) {}
+  return true;
+}
 function pollPad() {
   if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
   const gp = [...navigator.getGamepads()].find(g => g && g.connected);
