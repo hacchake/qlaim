@@ -2860,7 +2860,7 @@ function tickMeta(dt) {
   // タイトル(TOUR/DAILY)では8秒ごとに背景の盤面を次へ
   if (state === 'title' && (settings.mode === 'TOUR' || settings.mode === 'DAILY' || settings.mode === 'ZEN')) {
     demoT += dt;
-    if (demoT > 8) { demoT = 0; demoLv++; initLevel(demoLv); }
+    if (demoT > 8) { demoT = 0; demoLv++; initLevel(demoLv); say(surf.def.label + '!', 1.6, true); }
   } else demoT = 0;
   // 音の反応: 導火線やポーズでBGMがこもる、ピンチ(残機0)でも少しこもる
   const cut = state === 'pause' ? 500 : (fuse.lit && player.drawing) ? 1100 : deathTimer > 0 ? 700
