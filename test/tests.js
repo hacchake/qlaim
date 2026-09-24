@@ -1213,5 +1213,53 @@ buddiesOn = true;
   assert('コンティニューでスコア0', score === 0 && hiScore >= 123456, score + ' / ' + hiScore);
 }
 
+
+// ---- 85) いろいろな色のインク・虹・アイテム ----
+{
+  settings.mode = 'PLANE'; settings.ink = 'MIX'; settings.theme = THEMES.length; startGame(); setState('play');
+  qixes = []; sparxList = []; seekers = []; buddies = []; items = [];
+  assert('平面は INK テーマ', inkMode());
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) { nextInk(); seen.add(ink.i); }
+  assert('MIX: いろいろな色になる', seen.size >= 8, seen.size);
+  const a = ink.i; nextInk(); assert('続けて同じ色にならない', ink.i !== a);
+  assert('塗る色番号 = いまのインク', inkNo(1) === INK_BASE + ink.i && palHex(inkNo(1)) === INK_COLORS[ink.i]);
+  assert('ローラーの色 = いまのインク', inkHex() === INK_COLORS[ink.i]);
+  starT = 5; assert('STAR中は金のインク', palHex(inkNo(1)) === '#ffcc33'); starT = 0;
+  // 虹: セルごとに帯の色
+  ink.rainbowT = 5;
+  assert('虹のときは -1(セルごと)', inkNo(1) === -1);
+  const bins = new Set(); for (let c = 0; c < GW * 20; c += 7) bins.add(colFor(c, -1));
+  assert('虹: いくつもの色の帯になる', bins.size >= 6 && [...bins].every(v => v >= RB_BASE && v < RB_BASE + RB_N), bins.size);
+  ink.rainbowT = 0;
+  // 固定色(ネット対戦用の「自分の色」)
+  settings.ink = 'CYAN'; for (let i = 0; i < 5; i++) nextInk();
+  assert('固定色: いつも同じ色', ink.i === INK_FIXED.CYAN);
+  settings.ink = 'RAINBOW'; assert('RAINBOW設定: いつも虹', inkNo(1) === -1);
+  settings.ink = 'MIX';
+  // 描画(平面・立体)が例外なし
+  let err = null;
+  try {
+    for (let c = 0; c < 400; c++) if (grid[c] === OPEN) { grid[c] = WALL; colA[c] = c % 2 ? INK_BASE + 3 : RB_BASE + (c % RB_N); }
+    redrawField(); render();
+    settings.mode = 'CUBE'; startGame(); setState('play');
+    for (let c = 0; c < surf.N; c += 3) if (grid[c] === OPEN) { grid[c] = WALL; colA[c] = c % 2 ? INK_BASE + 5 : RB_BASE + (c % RB_N); }
+    ink.rainbowT = 3; buildColors(); render(); ink.rainbowT = 0;
+  } catch (e) { err = e.stack; }
+  assert('インク・虹の描画(平面・立体)が例外なし', !err, err);
+  // 新アイテム
+  settings.mode = 'PLANE'; startGame(); setState('play'); qixes = []; items = [];
+  const oc = surf.nb[player.c * 4 + 0] >= 0 && grid[surf.nb[player.c * 4 + 0]] === OPEN ? surf.nb[player.c * 4 + 0] : null;
+  const c0 = idx(GW >> 1, GH >> 1);
+  items.push({ c: c0, k: 'rainbow', t: 0 }); grid[c0] = WALL; collectItems();
+  assert('RAINBOWアイテムで虹インク', ink.rainbowT > 0);
+  const before = claimed, c1 = idx(20, 20);
+  items.push({ c: c1, k: 'splash', t: 0 }); grid[c1] = WALL; collectItems();
+  assert('SPLASHアイテムでまわりが塗られる', claimed > before, claimed - before);
+  ink.rainbowT = 0; const i0 = ink.i, c2 = idx(60, 30);
+  items.push({ c: c2, k: 'paint', t: 0 }); grid[c2] = WALL; collectItems();
+  assert('PAINTアイテムでインクの色が変わる', ink.i !== i0);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

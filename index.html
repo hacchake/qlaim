@@ -178,6 +178,7 @@ const CONFIG = {
   ITEM_LIFE: 18,        // アイテムが消えるまで(秒)
   SLOW_TIME: 8,         // SLOW: 敵がゆっくりになる時間(秒)
   SLOW_RATE: 0.4,       // SLOW中の敵の速さ(倍)
+  RAINBOW_TIME: 12,     // RAINBOW: 虹色インクの時間(秒)
   STAR_TIME: 10,        // STAR: 得点2倍の時間(秒)
   COMBO_TIME: 5,        // この秒数以内に次を囲むとコンボ
   COMBO_STEP: 0.5,      // コンボ1つごとの倍率の上がり幅
@@ -237,6 +238,9 @@ const ITEMS = {
   star:   { label:'STAR',   mark:'★', col:'#ffd76b', w:3, txt:'得点2倍' },
   life:   { label:'1UP',    mark:'♥', col:'#ff9ee8', w:1, txt:'残機+1' },
   zap:    { label:'ZAP',    mark:'✦', col:'#ff7a4a', w:2, txt:'バチッコを一掃・オイカケがしびれる' },
+  rainbow:{ label:'RAINBOW', mark:'≋', col:'#ff7ad9', w:2, txt:'しばらく虹色インク(得点1.5倍)' },
+  splash: { label:'SPLASH', mark:'✺', col:'#3ec6ff', w:2, txt:'そのばでインクがはじける' },
+  paint:  { label:'PAINT',  mark:'◐', col:'#c6f03a', w:2, txt:'ローラーの色が変わり、まわりを塗る' },
 };
 function pickItemKind() {
   const ks = Object.keys(ITEMS), tot = ks.reduce((a, k) => a + ITEMS[k].w, 0);
@@ -607,6 +611,7 @@ function hslHex(h, s, l) {
     return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
   return '#' + [f(0), f(8), f(4)].map(v => v.toString(16).padStart(2, '0')).join('');
 }
+function hexOf(c) { return '#' + c.map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join(''); }
 // '#rrggbb' を明度倍率で暗く(占領地のディザ用)
 function shade(hex, k) { return rgbStr(rgbOf(hex), k); }
 // 音名 → 周波数('A4'=440)
@@ -640,12 +645,13 @@ const store = (() => {
 })();
 
 const settings = Object.assign(
-  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: THEMES.length, crt: true, mode: 'TOUR', music: 'AUTO', shake: true, glow: true },
+  { bgm: 6, sfx: 7, diff: 'NORMAL', lives: CONFIG.LIVES, theme: THEMES.length, crt: true, mode: 'TOUR', music: 'AUTO', shake: true, glow: true, ink: 'MIX' },
   store.get('qlaim.settings', {})
 );
 if (!DIFFS[settings.diff]) settings.diff = 'NORMAL';
 if (!MODES.includes(settings.mode)) settings.mode = 'TOUR';
 if (!MUSIC_KEYS.includes(settings.music)) settings.music = 'AUTO';
+if (!['MIX', 'RAINBOW', 'ORANGE', 'PINK', 'CYAN', 'LIME', 'PURPLE', 'YELLOW', 'RED', 'BLUE'].includes(settings.ink)) settings.ink = 'MIX';
 settings.theme = clamp(settings.theme | 0, 0, THEMES.length);   // THEMES.length = AUTO
 function saveSettings() { store.set('qlaim.settings', settings); }
 function diff() { return DIFFS[settings.diff]; }
@@ -1870,9 +1876,79 @@ function setState(s) { state = s; stTimer = 0; }
 function percent()   { return claimed / initOpen * 100; }
 function target()    { return surf.def.target; }
 
+/* ---------------- インクの色 ----------------
+   INK テーマでは、線を1本閉じるたびにインクの色が変わる(ローラーの色 = 次に塗る色)。
+   colA の番号: 0 線 / 1..8 テーマの色 / 9 HOME / INK_BASE.. インク色 / RB_BASE.. 虹(帯の番号)
+   OPTIONS「インク」で MIX(いろいろ)・RAINBOW(いつも虹)・固定色(ネット対戦ができたら自分の色)を選べる */
+const INK_COLORS = ['#ff8a1f', '#ff4fa3', '#3ec6ff', '#7ee03a', '#b46bff', '#ffd22e', '#ff5a4a', '#2fe0b8',
+                    '#ff7ad9', '#5a7dff', '#c6f03a', '#ff9e6b', '#40e8ff', '#e85aff', '#35d07f', '#ffb3e6'];
+const GOLD_INK = INK_COLORS.length;             // STAR 中は金のインク
+const INK_ALL = INK_COLORS.concat(['#ffcc33']);
+const INK_BASE = 10, RB_BASE = INK_BASE + INK_ALL.length, RB_N = 12;
+const RB_COLORS = Array.from({ length: RB_N }, (_, i) => hslHex(i * 360 / RB_N, 88, 58));
+const INK_FIXED = { ORANGE:0, PINK:1, CYAN:2, LIME:3, PURPLE:4, YELLOW:5, RED:6, BLUE:9 };
+const INK_OPTS = ['MIX', 'RAINBOW'].concat(Object.keys(INK_FIXED));
+const ink = { i: 0, rainbowT: 0, ang: 0, v: [1, 0, 0], rt: 0 };
+function hueOf(hex) {
+  const [r, g, b] = rgbOf(hex).map(v => v / 255), mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
+  if (!d) return 0;
+  const h = mx === r ? (g - b) / d : mx === g ? 2 + (b - r) / d : 4 + (r - g) / d;
+  return (h * 60 + 360) % 360;
+}
+function hueGap(a, b) { const d = Math.abs(hueOf(a) - hueOf(b)) % 360; return Math.min(d, 360 - d); }
+function inkMode() { return !!theme().floor3d; }            // INK テーマ
+function inkRainbow() { return ink.rainbowT > 0 || settings.ink === 'RAINBOW'; }
+function nextInk() {
+  const f = INK_FIXED[settings.ink];
+  if (f != null) ink.i = f;
+  else {   // 前の色と色相が近すぎない色を選ぶ(黄色のあとに黄緑、などを避ける)
+    let i, n = 0;
+    do i = (Math.random() * INK_COLORS.length) | 0; while ((i === ink.i || hueGap(INK_COLORS[i], INK_COLORS[ink.i]) < 50) && ++n < 50);
+    ink.i = i;
+  }
+  // 虹の帯の向きも毎回変える(囲むたびに違う模様のパッチワークになる)
+  ink.ang = rand(0, Math.PI);
+  const a = rand(0, Math.PI * 2), z = rand(-1, 1), r = Math.sqrt(1 - z * z);
+  ink.v = [r * Math.cos(a), r * Math.sin(a), z];
+  if (surf) buildColors();
+}
+// いまローラーにのっている色
+function inkHex() {
+  if (inkRainbow()) return hslHex(blinkT * 140, 88, 60);
+  if (starT > 0) return INK_ALL[GOLD_INK];
+  return INK_COLORS[ink.i];
+}
+// 描いている線の色(速い線は少し淡く)
+function trailHex(fast) {
+  const t = theme();
+  if (!inkMode() && !inkRainbow()) return fast ? t.trailF : t.trailS;
+  const h = inkHex();
+  return fast ? hexOf(mixRgb(rgbOf(h), [255, 255, 255], 0.35)) : h;
+}
+// 塗るときの色番号。-1 は「セルごとに虹」
+function inkNo(themeNo) {
+  if (inkRainbow()) return -1;
+  if (!inkMode()) return themeNo;
+  return INK_BASE + (starT > 0 ? GOLD_INK : ink.i);
+}
+function rbBin(c) {
+  const P = surf.pos;
+  let d;
+  if (!surf.is3D) d = (P[c * 3] * Math.cos(ink.ang) + P[c * 3 + 1] * Math.sin(ink.ang)) / 6;
+  else d = (P[c * 3] * ink.v[0] + P[c * 3 + 1] * ink.v[1] + P[c * 3 + 2] * ink.v[2]) * 5;
+  return ((Math.floor(d) % RB_N) + RB_N) % RB_N;
+}
+function colFor(c, no) { return no < 0 ? RB_BASE + rbBin(c) : no; }
+// colA の番号 → 色
+function palHex(a) {
+  if (a >= RB_BASE) return RB_COLORS[a - RB_BASE];
+  if (a >= INK_BASE) return INK_ALL[a - INK_BASE];
+  return themePal[a - 1];
+}
+
 /* ---------------- テーマ適用 ---------------- */
 const LV = 6;       // 立体面の陰影段階数
-const NCOL = 24;    // 立体面の色の種類(下の bases の数)
+const NCOL = 24 + 2 * (17 + 12);   // 立体面の色の種類(下の bases の数。インク17色+虹12色、その暗い版)
 const FLASH_CI = 23; // 塗りの波の光
 let animHue = 0, animAcc = 0, animRedraw = 0; // 動くテーマ用の経過時間
 function themePalette(t) {
@@ -1909,10 +1985,12 @@ function buildColors() {
     // 0,1 空き地(市松)。floor3d があるテーマ(INK)はインクが映える中間色の床
     t.floor3d ? rgbOf(t.floor3d) : mixRgb(fld, acc, 0.30), t.floor3d ? mixRgb(rgbOf(t.floor3d), [0,0,0], 0.1) : mixRgb(fld, acc, 0.23),
     mixRgb([0,0,0], acc, 0.30),                       // 2 クリア時の封鎖色
-    rgbOf(t.line), rgbOf(t.trailF), rgbOf(t.trailS),  // 3 線 / 4,5 軌跡
+    rgbOf(t.line), rgbOf(trailHex(true)), rgbOf(trailHex(false)),  // 3 線 / 4,5 軌跡
     mixRgb([0,0,0], acc, 0.42),                       // 6 HOME
   ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.88)),
-           [mixRgb([255,255,255], acc, 0.25)]);            // 23 塗りの波が通った瞬間の光
+           [mixRgb([255,255,255], acc, 0.25)],             // 23 塗りの波が通った瞬間の光
+           INK_ALL.concat(RB_COLORS).map(rgbOf),           // 24.. インク・虹
+           INK_ALL.concat(RB_COLORS).map(c => mixRgb([0,0,0], rgbOf(c), 0.88)));
   col3D = [];
   bases.forEach((b, ci) => {
     const bright = ci >= 3 && ci <= 5;
@@ -1954,6 +2032,7 @@ function initLevel(lv) {
   items = []; itemTimer = CONFIG.ITEM_INTERVAL * 0.6;
   seekers = [];
   slowT = 0; starT = 0; combo = 0; comboT = 0; guarded = false; areaTime = 0;
+  ink.rainbowT = 0; nextInk();
   areaMiss = 0; areaFast = false;
   if (state !== 'title') {
     stats.plays[surf.key] = (stats.plays[surf.key] || 0) + 1;
@@ -2019,7 +2098,7 @@ function redrawField() {
     const i = idx(x, y);
     if (grid[i] !== WALL) continue;
     const c = colA[i], cx = x * CS + CS / 2, cy = y * CS + CS / 2;
-    if (!c || c > 8) add('line', cx, cy, CS * 0.62);
+    if (!c || c === HOME_COL) add('line', cx, cy, CS * 0.62);
     else {
       add((ringA[i] ? 'd' : 'n') + c, cx, cy, CS * 0.98);
       // インクのムラ(濃いしみ・薄いしみ)と、つやの点
@@ -2032,7 +2111,7 @@ function redrawField() {
   for (const key in paths) {
     if (key === 'line') continue;
     const c = +key.slice(1);
-    fctx.fillStyle = key[0] === 'd' ? themePalD[c - 1] : themePal[c - 1];
+    fctx.fillStyle = key[0] === 'd' ? shade(palHex(c), 0.9) : palHex(c);
     fctx.fill(paths[key]);
   }
   // ムラは陣地の上だけに(陣地の形で切り抜く)
@@ -2109,7 +2188,7 @@ function claimFill(palNo) {
   const visited = visitedFrom(openNear(surf.qixCell(qixes[0])));
   let gained = 0;
   for (let i = 0; i < surf.N; i++) {
-    if (grid[i] === OPEN && !visited[i]) { grid[i] = WALL; colA[i] = palNo; markClaim(i); gained++; }
+    if (grid[i] === OPEN && !visited[i]) { grid[i] = WALL; colA[i] = colFor(i, palNo); markClaim(i); gained++; }
   }
   return gained;
 }
@@ -2218,7 +2297,7 @@ function enterTrail(n) {
   Snd.updateDraw(trail.length, !player.usedFast);
   // インクのしずく: ローラーからはねる
   if (trail.length % 2 === 0) {
-    const p = surf.screenOf(n), col = player.usedFast ? theme().trailF : theme().trailS;
+    const p = surf.screenOf(n), col = trailHex(player.usedFast);
     particles.push({ x: p.x, y: p.y, vx: rand(-40, 40), vy: rand(-60, -20), t: rand(0.35, 0.6), col, ink: true, r: rand(1.8, 3.2) });
   }
 }
@@ -2227,7 +2306,7 @@ function closeTrail() {
   Snd.stopDraw();
   const slow = !player.usedFast;
   const mul = (slow ? 2 : 1) * surf.def.pts;
-  const palNo = (slow ? 4 : 0) + 1 + ((Math.random() * 4) | 0); // 1..4=FAST色, 5..8=SLOW色
+  const palNo = inkNo((slow ? 4 : 0) + 1 + ((Math.random() * 4) | 0)); // 1..4=FAST色, 5..8=SLOW色 / INK はインク色
 
   // 軌跡を壁化(線のセルも空き地から奪った領域として計上する)
   waveFrom = player.c;
@@ -2240,7 +2319,7 @@ function closeTrail() {
     if (crushed.length) {
       let gained = trail.length;
       for (let i = 0; i < surf.N; i++) {
-        if (grid[i] === OPEN && !seen[i]) { grid[i] = WALL; colA[i] = palNo; markClaim(i); gained++; }
+        if (grid[i] === OPEN && !seen[i]) { grid[i] = WALL; colA[i] = colFor(i, palNo); markClaim(i); gained++; }
       }
       claimed += gained;
       score += gained * mul;
@@ -2268,6 +2347,7 @@ function closeTrail() {
 
   const gained = claimFill(palNo) + trail.length;
   claimed += gained;
+  nextInk();                     // 次の線は別の色
 
   collectItems();
   crushSeekers();
@@ -2278,7 +2358,7 @@ function closeTrail() {
     // コンボ: 前に囲んでから COMBO_TIME 秒以内なら倍率アップ
     combo = comboT > 0 ? combo + 1 : 0;
     comboT = CONFIG.COMBO_TIME;
-    const cm = Math.min(CONFIG.COMBO_MAX, 1 + combo * CONFIG.COMBO_STEP) * (starT > 0 ? 2 : 1);
+    const cm = Math.min(CONFIG.COMBO_MAX, 1 + combo * CONFIG.COMBO_STEP) * (starT > 0 ? 2 : 1) * (ink.rainbowT > 0 ? 1.5 : 1);
     let pts = Math.round(gained * mul * cm);
     if (combo > 0) sayLine('combo');
     else if (gained / initOpen * 100 < CONFIG.BIG_CLAIM && Math.random() < 0.35) sayLine('claimS', 1.2);
@@ -2845,12 +2925,12 @@ function inkBomb(c0, r) {
   const qn = new Set();
   for (const q of qixes) { const qc = surf.qixCell(q); qn.add(qc); for (let k = 0; k < 4; k++) qn.add(surf.nb[qc * 4 + k]); }
   let cur = [c0], n = 0;
-  const seen = new Set(cur), pal = 5 + ((Math.random() * 4) | 0);
+  const seen = new Set(cur), pal = inkNo(5 + ((Math.random() * 4) | 0));
   waveFrom = c0;
   for (let d = 0; d <= r; d++) {
     const nx = [];
     for (const a of cur) {
-      if (grid[a] === OPEN && !qn.has(a)) { grid[a] = WALL; colA[a] = pal; markClaim(a); claimed++; n++; }
+      if (grid[a] === OPEN && !qn.has(a)) { grid[a] = WALL; colA[a] = colFor(a, pal); markClaim(a); claimed++; n++; }
       for (let k = 0; k < 4; k++) { const b = surf.nb[a * 4 + k]; if (b >= 0 && !seen.has(b) && grid[b] === OPEN) { seen.add(b); nx.push(b); } }
     }
     cur = nx;
@@ -3272,7 +3352,9 @@ function spawnItem() {
 }
 function updateItems(dt) {
   if (slowT > 0) slowT -= dt;
-  if (starT > 0) starT -= dt;
+  if (starT > 0) { starT -= dt; if (starT <= 0) buildColors(); }
+  if (ink.rainbowT > 0) { ink.rainbowT -= dt; if (ink.rainbowT <= 0) buildColors(); }
+  if (surf.is3D && inkRainbow() && player.drawing && (ink.rt += dt) > 0.15) { ink.rt = 0; buildColors(); }
   if (nearMissT > 0) nearMissT -= dt;
   // 待機・長い線・ピンチのひとこと
   if (player.drawing) { if (!player.saidLong && trail.length >= (surf.is3D ? 28 : 70)) { player.saidLong = true; sayLine('longline', 1.6); } }
@@ -3295,7 +3377,10 @@ function collectItems() {
     const I = ITEMS[it.k], p = surf.screenOf(it.c);
     if (it.k === 'slow') slowT = CONFIG.SLOW_TIME;
     else if (it.k === 'shield') player.shield = true;
-    else if (it.k === 'star') starT = CONFIG.STAR_TIME;
+    else if (it.k === 'star') { starT = CONFIG.STAR_TIME; buildColors(); }
+    else if (it.k === 'rainbow') { ink.rainbowT = CONFIG.RAINBOW_TIME; buildColors(); }
+    else if (it.k === 'splash') inkBomb(it.c, 4);
+    else if (it.k === 'paint') { nextInk(); inkBomb(it.c, 2); spawnParticles(p.x, p.y, 30, inkHex()); }
     else if (it.k === 'life') lives++;
     else if (it.k === 'zap') zapAll();
     itemsGot[it.k] = 1; store.set('qlaim.items', itemsGot);
@@ -3628,7 +3713,7 @@ function drawHelp(t) {
   ctx.fillStyle = '#ffd76b'; ctx.font = "bold 14px 'Courier New', monospace";
   ctx.fillText('── アイテム(線で囲むと手に入る)──', W / 2, y - 12);
   for (const k of Object.keys(ITEMS)) {
-    y += 44;
+    y += 34;
     row(y, (x, yy) => drawItem({ c: 0, k, t: 0 }, { x, y: yy }, false), ITEMS[k].label, ITEMS[k].txt);
   }
   y += 50;
@@ -3780,6 +3865,7 @@ const OPT_ITEMS = [
   { k:'glow',  label:'発光',     vals:['OFF','ON'], bool:true },
   { k:'shake', label:'揺れ・振動', vals:['OFF','ON'], bool:true },
   { k:'skin',  label:'Clawdの色' },
+  { k:'ink',   label:'インク', vals:INK_OPTS, str:true },
   { k:'_dex',  label:'buddy図鑑' },
   { k:'_achv', label:'実績を見る' },
   { k:'_stats', label:'あそんだ記録' },
@@ -3805,6 +3891,7 @@ function adjustOpt(dir) {
     i = (i + dir + it.vals.length) % it.vals.length;
     settings[it.k] = it.str ? it.vals[i] : i;
     if (it.k === 'theme') applyTheme();
+    if (it.k === 'ink') { nextInk(); if (grid) redrawField(); }
     if (it.k === 'music') Bgm.play(settings.music === 'AUTO' ? 'title' : MUSIC_SONG[settings.music]); // 試聴
   } else {
     settings[it.k] = clamp((settings[it.k] | 0) + dir, it.min, it.max);
@@ -4045,7 +4132,7 @@ function drawRoller(p, s, t) {
     const q = surf.screenOf(player.prev), l = Math.hypot(p.x - q.x, p.y - q.y);
     if (l > 0.5 && l < 60) { dx = (p.x - q.x) / l; dy = (p.y - q.y) / l; }
   }
-  const col = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : '#c9c2b6';
+  const col = player.drawing ? trailHex(player.usedFast) : (inkMode() || inkRainbow()) ? inkHex() : '#c9c2b6';   // ローラー = 次に塗る色
   const rx = p.x + dx * 7 * s, ry = p.y + dy * 7 * s;   // ローラーの中心
   const px = -dy, py = dx, half = 5.5 * s;               // ローラーの軸(進む向きに直角)
   ctx.lineCap = 'round';
@@ -4072,7 +4159,7 @@ function drawPlayer(t) {
   const moving = blinkT - player.moveT < 0.18;
   const cheer = state === 'clear';                    // クリア: ぴょんぴょん跳ねて腕を振る
   const jump = cheer ? Math.abs(Math.sin(stTimer * 9)) * 5 * s : 0;
-  const glow = player.drawing ? (player.usedFast ? t.trailF : t.trailS) : t.accent;
+  const glow = player.drawing ? trailHex(player.usedFast) : t.accent;
   const cx = p.x, cy = p.y - s * 2 - jump;
   // SHIELD: まわりに泡
   if (player.shield) {
@@ -4184,6 +4271,7 @@ function drawStatus() {
   if (bonusT > 0) pill('BONUS ' + Math.ceil(bonusT) + 's', '#ff9ee8');
   if (slowT > 0) pill('S SLOW ' + Math.ceil(slowT), ITEMS.slow.col);
   if (starT > 0) pill('★ x2 ' + Math.ceil(starT), ITEMS.star.col);
+  if (ink.rainbowT > 0) pill('≋ RAINBOW ' + Math.ceil(ink.rainbowT), hslHex(blinkT * 140, 88, 66));
   if (player.shield) pill('◆ SHIELD', ITEMS.shield.col);
   if (combo > 0 && comboT > 0) {
     pill('COMBO ×' + Math.min(CONFIG.COMBO_MAX, 1 + combo * CONFIG.COMBO_STEP), '#ffd76b');
@@ -4482,7 +4570,7 @@ function drawQixRibbons() {
 function drawInkTrail(t) {
   // 描いている線: 太いインクの帯(暗いふち + インク + つや)。光らせたり点滅させたりはしない
   if (!trail.length) return;
-  const col = player.usedFast ? t.trailF : t.trailS, w = surf.is3D ? 9 : CS * 2;
+  const col = trailHex(player.usedFast), w = surf.is3D ? 9 : CS * 2;
   const path = new Path2D();
   let pen = false, prev = null;
   for (const c of [trailStart].concat(trail, [player.c])) {
@@ -4602,7 +4690,10 @@ function render3D(t) {
     else {
       const ca = claimAt[c];
       if (ca > now) ci = par[c];                    // 塗りの波がまだ届いていない
-      else { const a = colA[c]; ci = a === 0 ? 3 : a === HOME_COL ? 6 : 6 + a + (ringA[c] ? 8 : 0); }
+      else {
+        const a = colA[c];
+        ci = a === 0 ? 3 : a === HOME_COL ? 6 : a >= INK_BASE ? 24 + a - INK_BASE + (ringA[c] ? 29 : 0) : 6 + a + (ringA[c] ? 8 : 0);
+      }
     }
     let lit = nx * lx + ny * ly + nz * lz;
     if (S.twoSided) lit = 0.35 + 0.65 * Math.abs(lit);
@@ -4920,7 +5011,7 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 202, dy = 33;
+    const y0 = 200, dy = 31;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
       optRects.push({ x: 76, y: y - 22, w: W - 152, h: 30, idx: i });

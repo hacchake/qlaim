@@ -131,6 +131,12 @@ node test/run-tests.js
 - 色違い(1/40、`buddyShiny` に記録)はごほうび2倍。見た目は金の輪と止まったきらめき(点滅しない)
 - 図鑑は 'dex'(一覧・カーソル `dexSel`)→ 'dexcard'(★レア度・ステータスのカード)
 
+## インクの色
+- colA の番号: 0 線 / 1..8 テーマの色 / 9 HOME / `INK_BASE`(10)〜 インク17色(最後が金) / `RB_BASE`〜 虹12帯。平面は `palHex`、立体は `col3D` の 24 番以降
+- `inkMode()` は INK テーマのとき。線を閉じるたびに `nextInk()`(直前と色相が50°以上離れた色)。ローラー・描きかけの線・しずくは `trailHex` / `inkHex`
+- 虹: `inkNo()` が -1 を返し、`colFor` がセルごとに `rbBin`(帯の向きは毎回ランダム)で色を決める。RAINBOW アイテム(得点1.5倍)か設定 RAINBOW
+- `settings.ink`: MIX / RAINBOW / 固定色(`INK_FIXED`)。ネット対戦を作るなら、ここを各プレイヤーの色にする
+
 ## Clawd のセリフ
 - `sayLine(場面)` が `CLAWD_LINES[場面]` から選ぶ(直前と同じものは避ける)。約4%で `RARE_LINES`(★つき・金ぶち)
 - 時事ネタ: `dateLines(date)` が日付・季節・曜日・時間のセリフを返す(start/idle/clear で約18%)。オフラインなので本物のニュースは取れない。流行りの話題は `TOPICAL_LINES` に書き足す
