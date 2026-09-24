@@ -275,11 +275,11 @@ initLevel(3); setState('play');
 setState('title'); settings.mode = 'TOUR';
 cycleMode(1);
 assert('モード切替 TOUR→DAILY', settings.mode === 'DAILY' && surf.key === dailyList()[0]);
-cycleMode(1);
-assert('モード切替 DAILY→PLANE', settings.mode === 'PLANE' && surf.key === 'PLANE');
+cycleMode(1); cycleMode(1);
+assert('モード切替 DAILY→ZEN→PLANE', settings.mode === 'PLANE' && surf.key === 'PLANE');
 cycleMode(1); cycleMode(1);
 assert('モード切替 →SPHERE で盤面も球に', settings.mode === 'SPHERE' && surf.key === 'SPHERE');
-for (let i = 4; i < MODES.length; i++) cycleMode(1);
+for (let i = 5; i < MODES.length; i++) cycleMode(1);
 assert('モード切替は一周する', settings.mode === 'TOUR', MODES.length);
 for (let i = 0; i < 60; i++) tickMeta(1/60);
 assert('タイトル中も動作(カメラ回転で例外なし)', state === 'title');
@@ -747,6 +747,23 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('Xを押す間はカメラが大きく引く', cam.D > 5, cam.D.toFixed(2));
   held.slow = false; for (let i = 0; i < 180; i++) tickMeta(1/60);
   assert('離すと戻る', Math.abs(cam.D - 3.4) < 0.05, cam.D.toFixed(2));
+}
+
+
+// ---- 52) ZENモード ----
+{
+  settings.mode = 'ZEN'; startGame(); level = 6; initLevel(6); setState('play');
+  assert('ZEN: SPARX・SEEKERなし', sparxes.length === 0 && seekers.length === 0);
+  player.invuln = 0; const l0 = lives; death();
+  assert('ZEN: ミスにならない', deathTimer <= 0 && lives === l0);
+  held.fast = false; stepK(0); stepK(0);
+  for (let i = 0; i < 300; i++) updateFuse(1/30, false);
+  assert('ZEN: 導火線なし', !fuse.lit && player.drawing);
+  score = 99999; saveHi();
+  assert('ZEN: 記録しない', !qualifies(99999) && !hiScores.ZEN);
+  assert('ZEN: BONUS AREAなし', !isBonus(5));
+  const np = particles.length; stepK(0); stepK(0);
+  assert('描くとき光の粒がこぼれる', particles.length > np);
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

@@ -234,7 +234,9 @@ function pickItemKind() {
 }
 
 /* ---- 遊ぶ盤面(タイトル画面で ←→ で選択) ---- */
-const MODES = ['TOUR', 'DAILY'].concat(Object.keys(CONFIG.SURF));
+const MODES = ['TOUR', 'DAILY', 'ZEN'].concat(Object.keys(CONFIG.SURF));
+// ZEN: のんびりお絵かき。ミスなし・SPARX/SEEKERなし・導火線なし・記録なし。盤面はTOURの順
+function isZen() { return settings.mode === 'ZEN'; }
 
 /* ---- DAILY: 日付で決まる「今日の3面」。記録も日ごと ---- */
 function todayStr(d) {
@@ -255,11 +257,13 @@ function modeKey() { return settings.mode === 'DAILY' ? 'DAILY:' + todayStr() : 
 function modeLabel(m) {
   if (m === 'TOUR') return 'TOUR ─ ぜんぶ巡る';
   if (m === 'DAILY') return 'DAILY ─ 今日の3面';
+  if (m === 'ZEN') return 'ZEN ─ のんびりお絵かき';
   return CONFIG.SURF[m].label;
 }
 function modeSub(m) {
   if (m === 'TOUR') return CONFIG.TOUR.length + '種類の盤面を順番に';
   if (m === 'DAILY') return dailyList().map(k => CONFIG.SURF[k].label).join(' → ');
+  if (m === 'ZEN') return 'ミスなし・敵は QIX だけ。音と色を楽しむモード';
   return CONFIG.SURF[m].sub;
 }
 
@@ -572,7 +576,7 @@ function hiOf(mode) { return hiScores[mode] | 0; }
 const RANK_N = 5;
 const ranks = store.get('qlaim.rank', {});
 function rankOf(mode) { return ranks[mode] || []; }
-function qualifies(sc) { const r = rankOf(modeKey()); return sc > 0 && (r.length < RANK_N || sc > r[r.length - 1].s); }
+function qualifies(sc) { if (isZen()) return false; const r = rankOf(modeKey()); return sc > 0 && (r.length < RANK_N || sc > r[r.length - 1].s); }
 // 登録して、その順位(0始まり)を返す
 function addRank(name, sc, area) {
   const key = modeKey(), r = rankOf(key).concat([{ n: name, s: sc, a: area }]);
@@ -645,6 +649,7 @@ function saveBest() {
   if (!(bestPct[k] >= v)) { bestPct[k] = v; store.set('qlaim.best', bestPct); }
 }
 function saveHi() {
+  if (isZen()) return;                 // ZEN は記録しない
   if (score > hiScore) hiScore = score;
   hiScores[modeKey()] = hiScore;
   store.set('qlaim.hi3', hiScores);
@@ -1493,7 +1498,7 @@ function getSurface(key) {
 }
 function surfaceFor(lv) {
   if (settings.mode === 'DAILY') { const d = dailyList(); return d[(lv - 1) % d.length]; }
-  if (settings.mode !== 'TOUR') return settings.mode;
+  if (settings.mode !== 'TOUR' && settings.mode !== 'ZEN') return settings.mode;   // ZEN はTOURと同じ順
   return CONFIG.TOUR[(lv - 1) % CONFIG.TOUR.length];
 }
 
@@ -1584,7 +1589,7 @@ let pauseSel = 0;               // ポーズメニューの選択行
 let continues = 0;              // このゲームでコンティニューした回数
 let demoT = 0, demoLv = 1;      // タイトルのデモ: 背景の盤面を巡らせる
 let bonusT = 0;                 // BONUS AREA の残り時間
-function isBonus(lv) { lv = lv || level; return lv % CONFIG.BONUS_EVERY === 0; }
+function isBonus(lv) { lv = lv || level; return !isZen() && lv % CONFIG.BONUS_EVERY === 0; }
 // 自動軽量化: プレイ中に重い(1フレーム28ms超が続く)ときは発光を切る。設定は保存しない
 const perf = { avg: 1 / 60, slowT: 0, lite: false };
 function watchPerf(rawDt) {
@@ -1732,12 +1737,12 @@ function initLevel(lv) {
   for (let k = 0; k < nq; k++) qixes.push(makeQix(k, nq, spd));
 
   sparxes = [];
-  const ns = bonus ? 0 : Math.min(4, surf.def.sparxStart + ((lv - 1) >> 1));   // BONUS AREA は SPARX なし
+  const ns = bonus || isZen() ? 0 : Math.min(4, surf.def.sparxStart + ((lv - 1) >> 1));   // BONUS AREA は SPARX なし
   for (let i = 0; i < ns; i++) spawnSparx(i % 2 ? 1 : -1, surf.def.sparxWait + i * 1.5 * (surf.def.sparxWait > 0));
   sparxTimer = CONFIG.SPARX_INTERVAL * diff().interval;
   // SEEKER は盤面ができて自機の位置が決まってから出す
-  if (bonus) sparxTimer = Infinity;
-  if (lv >= CONFIG.SEEKER_FROM && !bonus) for (let i = 0; i < (lv >= CONFIG.SEEKER_FROM + 4 ? 2 : 1); i++) spawnSeeker();
+  if (bonus || isZen()) sparxTimer = Infinity;
+  if (lv >= CONFIG.SEEKER_FROM && !bonus && !isZen()) for (let i = 0; i < (lv >= CONFIG.SEEKER_FROM + 4 ? 2 : 1); i++) spawnSeeker();
 
   particles = []; floats = [];
   deathTimer = 0; wasSplit = false; shakeT = 0;
@@ -1925,6 +1930,11 @@ function enterTrail(n) {
   player.prev = player.c; player.c = n;
   if (held.fast) { player.usedFast = true; areaFast = true; }
   Snd.updateDraw(trail.length, !player.usedFast);
+  // きらめき: 描いた跡に光の粒をこぼす
+  if (trail.length % 2 === 0) {
+    const p = surf.screenOf(n), col = player.usedFast ? theme().trailF : theme().trailS;
+    particles.push({ x: p.x, y: p.y, vx: rand(-18, 18), vy: rand(-30, -8), t: rand(0.3, 0.6), col });
+  }
 }
 
 function closeTrail() {
@@ -2155,7 +2165,7 @@ function fuseReset() { fuse.wait = 0; fuse.pos = 0; fuse.lit = false; fuse.sndT 
 function effFuseDelay() { return CONFIG.FUSE_DELAY * diff().fuse; }
 
 function updateFuse(dt, stepped) {
-  if (!player.drawing || trail.length === 0) return;
+  if (!player.drawing || trail.length === 0 || isZen()) return;
   if (stepped) { fuse.wait = 0; return; } // 動いている間は進まない(点火状態は維持)
   fuse.wait += dt;
   if (fuse.wait >= effFuseDelay()) {
@@ -2258,7 +2268,7 @@ function updateSparxes(dt) {
 
 /* ---------------- ミス処理 ---------------- */
 function death() {
-  if (player.invuln > 0 || deathTimer > 0) return;
+  if (player.invuln > 0 || deathTimer > 0 || isZen()) return;
   guarded = player.shield;     // SHIELD があれば残機は減らない(線は消える)
   player.shield = false;
   deathTimer = guarded ? 0.6 : 1.2;
@@ -2540,7 +2550,7 @@ function update(dt) {
 function tickMeta(dt) {
   if (shakeT > 0) shakeT -= dt;
   // タイトル(TOUR/DAILY)では8秒ごとに背景の盤面を次へ
-  if (state === 'title' && (settings.mode === 'TOUR' || settings.mode === 'DAILY')) {
+  if (state === 'title' && (settings.mode === 'TOUR' || settings.mode === 'DAILY' || settings.mode === 'ZEN')) {
     demoT += dt;
     if (demoT > 8) { demoT = 0; demoLv++; initLevel(demoLv); }
   } else demoT = 0;
@@ -3283,12 +3293,12 @@ function renderOverlay() {
     ctx.fillText(modeSub(settings.mode) + '   (' + (MODES.indexOf(settings.mode) + 1) + '/' + MODES.length + ')', W / 2, 536);
     // 記録: 単独の盤面ならその最高占領率、TOURならクリアした盤面の数
     const nClear = Object.keys(CONFIG.SURF).filter(k => bestPct[k] != null).length;
-    const rec = settings.mode === 'DAILY'
+    const rec = isZen() ? '記録なし ─ のんびりどうぞ' : settings.mode === 'DAILY'
       ? todayStr().replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') + ' の記録  ' + (hiScore ? String(hiScore).padStart(7, '0') : 'まだなし')
       : settings.mode === 'TOUR'
       ? 'クリアした盤面  ' + nClear + ' / ' + Object.keys(CONFIG.SURF).length
       : bestPct[settings.mode] != null ? '★ クリア済み  最高 ' + bestPct[settings.mode] + '%' : '未クリア';
-    ctx.fillStyle = bestPct[settings.mode] != null || settings.mode === 'TOUR' || settings.mode === 'DAILY' ? '#ffd76b' : '#6d7ba8';
+    ctx.fillStyle = isZen() ? '#9dffea' : bestPct[settings.mode] != null || settings.mode === 'TOUR' || settings.mode === 'DAILY' ? '#ffd76b' : '#6d7ba8';
     ctx.fillText(rec + '    ←→ で盤面をえらぶ', W / 2, 560);
 
     if (blinkOn) {
