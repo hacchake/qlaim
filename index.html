@@ -2584,6 +2584,7 @@ function drawHelp(t) {
   y += 50;
   ctx.fillStyle = '#cdd8ff'; ctx.font = "13px 'Courier New', monospace";
   ['続けて囲むとコンボ。QIX 2体を線で分断すると即クリア',
+   'QIXが描きかけの線をかすめると「ギリギリ!」ボーナス',
    '5エリアごとに BONUS AREA。X を押す間は立体の全体が見える'].forEach((ln, i) => ctx.fillText(ln, W / 2, y + i * 22));
   ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
   ctx.fillText('Z / X / タップ でもどる', W / 2, 762);

@@ -90,6 +90,7 @@ node test/run-tests.js
 - 盤面の豆知識: `SURF_INFO`(READY画面)
 - あそびかた: `openHelp` / `closeHelp` / `drawHelp`(state 'help'、タイトルのH・ポーズメニュー)
 - ゲームオーバーで R = すぐもう一度
+- 振動 `buzz`(settings.shake で ON/OFF)、ニアミス `nearMiss`(`NEAR_MISS_PTS`)、SPARX接近のチリチリ音
 
 ## 操作
 - 方向キーで空き地へ進むと、ボタン無しでゆっくり線を引く(×2点)。Z/スペースを押している間だけ速い(×1点)。
