@@ -1674,6 +1674,7 @@ let guarded = false;            // SHIELD でミスを防いだ最中
 let areaTime = 0;               // このエリアの経過時間
 let pauseSel = 0;               // ポーズメニューの選択行
 let continues = 0;              // このゲームでコンティニューした回数
+let startHi = 0;                // ゲーム開始時のハイスコア(更新したか判定)
 let demoT = 0, demoLv = 1;      // タイトルのデモ: 背景の盤面を巡らせる
 let bonusT = 0;                 // BONUS AREA の残り時間
 let heartT = 0;                 // 心臓の鼓動の間隔
@@ -2502,6 +2503,7 @@ function startGame() {
   level = 1;
   player.shield = false;
   hiScore = hiOf(modeKey());      // 日付が変わっていても今日の記録を使う
+  startHi = hiScore;
   stats.games++; saveStats();
   continues = 0;
   nearMissN = 0;
@@ -4006,6 +4008,10 @@ function renderOverlay() {
     ctx.fillStyle = '#ffffff';
     ctx.font = "bold 17px 'Courier New', monospace";
     ctx.fillText('SCORE ' + score + '   HI ' + hiScore, W / 2, 334);
+    if (score > startHi && !isZen() && blinkOn) {
+      ctx.fillStyle = '#ffd76b'; ctx.font = "bold 14px 'Courier New', monospace";
+      ctx.fillText('★ NEW HI SCORE! ★', W / 2, 352);
+    }
     ctx.fillStyle = '#8fa3d9';
     ctx.font = "bold 13px 'Courier New', monospace";
     ctx.fillText('── ' + modeLabel(settings.mode) + ' ランキング ──', W / 2, 368);

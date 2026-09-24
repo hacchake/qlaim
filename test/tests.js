@@ -1045,5 +1045,13 @@ assert('全曲に表示名がある', Object.keys(BGMDATA).every(k => SONG_LABEL
   assert('あそびかたからPでポーズへ戻る', state === 'pause');
 }
 
+
+// ---- 78) ハイスコア更新の表示 ----
+{
+  settings.mode = 'ICOSA'; startGame(); score = startHi + 1; setState('over'); stTimer = 20;
+  let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('ハイスコア更新の表示が例外なし', !err && score > startHi, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
