@@ -945,5 +945,17 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('SPARXはしばらくするとまた出る', sparxes.length > 0);
 }
 
+
+// ---- 68) TOUR 1周でエンディング ----
+{
+  settings.mode = 'TOUR'; startGame(); level = CONFIG.TOUR.length; initLevel(level); setState('play');
+  claimed = Math.ceil(initOpen * 0.8); startClear(false); stTimer = 1; onAction();
+  assert('TOURの最後をクリアするとエンディング', state === 'ending' && !!achvGot.tourall);
+  let err = null; try { stTimer = 5; render(); for (let i = 0; i < 30; i++) updateParticles(1/30); } catch (e) { err = e.stack; }
+  assert('エンディングの描画が例外なし', !err, err);
+  onAction();
+  assert('Zで2周目(AREA 23 = 平面から)', state === 'ready' && level === CONFIG.TOUR.length + 1 && surf.key === 'PLANE', level + ' ' + surf.key);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

@@ -646,6 +646,7 @@ const ACHV = [
   { id:'platonic', name:'プラトンの立体', txt:'正多面体5種をすべてクリア' },
   { id:'stars',    name:'星をつかむ',     txt:'星型3種をすべてクリア' },
   { id:'all',      name:'全制覇',         txt:'すべての盤面をクリア' },
+  { id:'tourall',  name:'世界一周',       txt:'TOURを1周してエンディングを見る' },
 ];
 const achvGot = store.get('qlaim.ach', {});
 const itemsGot = store.get('qlaim.items', {});      // これまでに取ったアイテムの種類
@@ -2490,6 +2491,44 @@ function continueGame() {
 }
 function giveUp() { if (canContinue()) { stTimer = CONFIG.CONTINUE_TIME; Snd.blip(); } }
 
+/* ---- エンディング(TOUR 1周) ---- */
+function startEnding() {
+  setState('ending');
+  unlock('tourall');
+  Bgm.play('title');
+}
+function finishEnding() {
+  setState('clear');      // nextLevel の判定を通すため一度 clear に戻して次の周へ
+  level++;
+  initLevel(level);
+  setState('ready');
+  Bgm.play(bgmName());
+  Snd.ready();
+}
+function drawEnding(t) {
+  ctx.fillStyle = 'rgba(2,3,10,0.72)';
+  ctx.fillRect(0, FIELD_Y, W, H - FIELD_Y);
+  const lines = ['QLAIM', '', '全' + CONFIG.TOUR.length + '面 制覇!', 'おめでとう!', '', '── 出演 ──']
+    .concat(CONFIG.TOUR.map(k => CONFIG.SURF[k].label))
+    .concat(['', 'QIX', 'SPARX', 'SEEKER', '', '── 主演 ──', 'Clawd', '', 'SCORE ' + score, '', 'Z で2周目へ']);
+  const y0 = H - stTimer * 42;
+  ctx.textAlign = 'center';
+  lines.forEach((ln, i) => {
+    const y = y0 + i * 34;
+    if (y < FIELD_Y + 10 || y > H + 20) return;
+    const big = i === 0 || ln === 'Clawd';
+    ctx.fillStyle = big ? t.accent : ln.startsWith('──') ? '#8fa3d9' : '#ffffff';
+    ctx.font = (big ? "bold 34px" : "bold 17px") + " 'Courier New', monospace";
+    ctx.fillText(ln, W / 2, y);
+  });
+  const x = W / 2 + Math.sin(stTimer * 0.9) * 200;
+  drawClawd(x, H - 40, 2.4, { moving: true, walkF: Math.floor(stTimer * 8) & 1, drawing: true, look: Math.cos(stTimer * 0.9) > 0 ? 1 : -1 });
+  if (stTimer > 3 && Math.sin(blinkT * 5) > -0.2) {
+    ctx.fillStyle = '#ffd76b'; ctx.font = "bold 14px 'Courier New', monospace";
+    ctx.fillText('Z / タップ で2周目へ', W / 2, FIELD_Y + 24);
+  }
+}
+
 function checkClearAchv(split) {
   unlock('first');
   if (split) unlock('split');
@@ -2505,6 +2544,8 @@ function checkClearAchv(split) {
 }
 
 function nextLevel() {
+  // TOUR の最後の面をクリアしたらエンディング(Z で2周目へ)
+  if (settings.mode === 'TOUR' && level % CONFIG.TOUR.length === 0 && state === 'clear') { startEnding(); return; }
   level++;
   if (level >= 10) unlock('area10');
   initLevel(level);
@@ -2542,6 +2583,7 @@ function closeOptions() {
 function onAction() {
   if (state === 'title') startGame();
   else if (state === 'clear' && stTimer > 0.8) nextLevel();
+  else if (state === 'ending' && stTimer > 3) finishEnding();
   else if (state === 'over'  && stTimer > 0.8) { if (canContinue()) continueGame(); else backToTitle(); }
 }
 
@@ -2626,7 +2668,7 @@ function spawnParticles(px, py, n, col) {
 // クリア中は花火を打ち上げる
 let fwT = 0;
 function updateFireworks(dt) {
-  if (state !== 'clear') return;
+  if (state !== 'clear' && state !== 'ending') return;
   fwT -= dt;
   if (fwT > 0) return;
   fwT = rand(0.18, 0.4);
@@ -3501,6 +3543,7 @@ function panel(x, y, w, h) {
 
 function renderOverlay() {
   const t = theme();
+  if (state === 'ending') { drawEnding(t); return; }
   const blinkOn = Math.sin(blinkT * 5) > -0.2;
   ctx.textAlign = 'center';
 
