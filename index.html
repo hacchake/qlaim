@@ -305,6 +305,9 @@ function modeSub(m) {
 
 /* ---- BGMの選び方(OPTIONS)。AUTO は盤面ごとの music ---- */
 const MUSIC_KEYS = ['AUTO', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM', 'SYNTH', 'LOFI'];
+// 曲の表示名(READY 画面の「♪」)
+const SONG_LABEL = { play:'クラシック', orbit:'宇宙', chip:'チップチューン', drone:'ドローン', ambient:'アンビエント',
+                     idm:'IDM', synth:'シンセウェイブ', lofi:'ローファイ', title:'タイトル' };
 const MUSIC_SONG = { CLASSIC:'play', ORBIT:'orbit', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm',
                      SYNTH:'synth', LOFI:'lofi' };
 
@@ -3872,6 +3875,8 @@ function renderOverlay() {
       ctx.fillText(surf.def.sub, W / 2, H / 2 + 12);
       ctx.fillStyle = '#cdd8ff';
       ctx.fillText(SURF_INFO[surf.key] || '', W / 2, H / 2 + 30);
+      ctx.fillStyle = '#9dffea';
+      ctx.fillText('♪ ' + (SONG_LABEL[bgmName()] || bgmName()), W / 2, H - 20);
       if (blinkOn) {
         ctx.fillStyle = '#ffffff';
         ctx.font = "bold 22px 'Courier New', monospace";

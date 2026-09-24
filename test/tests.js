@@ -1033,5 +1033,9 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   assert('実績一覧(19件)の描画', !err && ACHV.length === 19, err || ACHV.length);
 }
 
+
+// ---- 76) 曲名 ----
+assert('全曲に表示名がある', Object.keys(BGMDATA).every(k => SONG_LABEL[k]));
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
