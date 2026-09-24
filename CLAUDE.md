@@ -91,6 +91,9 @@ node test/run-tests.js
 - あそびかた: `openHelp` / `closeHelp` / `drawHelp`(state 'help'、タイトルのH・ポーズメニュー)
 - ゲームオーバーで R = すぐもう一度
 - 振動 `buzz`(settings.shake で ON/OFF)、ニアミス `nearMiss`(`NEAR_MISS_PTS`)、SPARX接近のチリチリ音
+- タブ/アプリ切替で自動ポーズ(visibilitychange)、曲名 `SONG_LABEL`(READY画面)、Clawdのきょろきょろ(3秒静止)
+- ポーズ画面に盤面・占領率・スコア、ハイスコア更新表示 `startHi`、初めての盤面の表示(stats.plays === 1)
+- コンボで効果音が半音ずつ上がる、タイトルのClawdが盤面名を言う
 
 ## 操作
 - 方向キーで空き地へ進むと、ボタン無しでゆっくり線を引く(×2点)。Z/スペースを押している間だけ速い(×1点)。
