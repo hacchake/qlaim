@@ -1300,7 +1300,10 @@ function makePlaneSurface() {
     },
     // 腕の上のセルを順に fn へ渡す(fn が true を返したら打ち切り)
     segEach(sg, fn) {
-      for (let t = 0; t <= 1.0001; t += 0.1) {
+      // 1マスより細かい間隔で調べる(細い線がすき間をすり抜けないように)
+      const n = Math.ceil(Math.hypot(sg.x2 - sg.x1, sg.y2 - sg.y1) * 2) + 1;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
         const cx = Math.floor(sg.x1 + (sg.x2 - sg.x1) * t);
         const cy = Math.floor(sg.y1 + (sg.y2 - sg.y1) * t);
         if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue;
@@ -3061,8 +3064,9 @@ function updateQix(q, dt) {
     q.segs.push(sg);
     if (q.segs.length > 15) q.segs.shift();
   }
-  // 当たり判定: 最新セグメント上をサンプリング
+  // 当たり判定: 体(クラゲのかさ)が描きかけの線や描いている自機に触れてもミス
   if (!q.segs.length || state !== 'play') return;
+  if (qixBodyHits(q)) { death(); return; }
   let close = false;
   const hit = surf.segEach(q.segs[q.segs.length - 1], c => {
     if (grid[c] === TRAIL || (player.drawing && c === player.c)) { death(); return true; }
@@ -3088,6 +3092,21 @@ function nearMiss() {
   buzz(30, 0.3);
   say('ひやっ!', 1.0);
   Snd.blip();
+}
+// ヌメリンの体の範囲(中心からグラフで r 歩以内。見た目の体の大きさに合わせる)に線があるか
+function qixBodyHits(q) {
+  const r = surf.is3D ? 1 : 2, c0 = surf.qixCell(q);
+  let cur = [c0];
+  const seen = new Set(cur);
+  for (let d = 0; d <= r; d++) {
+    const nx = [];
+    for (const c of cur) {
+      if (hitsTrail(c)) return true;
+      if (d < r) for (let k = 0; k < 4; k++) { const n = surf.nb[c * 4 + k]; if (n >= 0 && !seen.has(n)) { seen.add(n); nx.push(n); } }
+    }
+    cur = nx;
+  }
+  return false;
 }
 function updateQixes(dt) {
   for (const q of qixes) {

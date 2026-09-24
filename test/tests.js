@@ -1013,7 +1013,8 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 0; held.fast = true;
   steps(0, -1, 30);
   const tc = trail[15], x = tc % GW, y = (tc / GW) | 0;
-  const q = qixes[0]; q.x = x + 2.5; q.y = y + 0.5; q.segs = [{ x1: x + 1.5, y1: y - 4, x2: x + 1.5, y2: y + 4, h: 0 }]; q.segT = 1; q.spd = 0;
+  // 体は線に触れない距離、触手だけ線の隣をかすめる
+  const q = qixes[0]; q.x = x + 4.5; q.y = y + 0.5; q.segs = [{ x1: x + 1.5, y1: y - 4, x2: x + 1.5, y2: y + 4, h: 0 }]; q.segT = 1; q.spd = 0;
   const sc = score; nearMissT = 0;
   updateQix(q, 0.001);
   assert('線の隣をかすめるとニアミスボーナス', deathTimer <= 0 && score > sc && nearMissT > 0, score - sc);
@@ -1117,6 +1118,34 @@ buddiesOn = true;
   assert('buddy18種・図鑑・立体での描画が例外なし', !err, err);
   assert('会ったbuddyが図鑑に記録される', Object.keys(buddyMet).length >= 8);
 }
+
+
+// ---- 81) ヌメリンの体が線に当たるとミス ----
+buddiesOn = false;
+{
+  for (const md of ['PLANE', 'SPHERE']) {
+    settings.mode = md; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 0; held.fast = true;
+    if (md === 'PLANE') steps(0, -1, 30); else { for (let i = 0; i < 8; i++) stepK(0); }
+    const tc = trail[trail.length - 3], q = qixes[0];
+    if (md === 'PLANE') { q.x = (tc % GW) + 1.5; q.y = ((tc / GW) | 0) + 0.5; q.segs = [{ x1: q.x + 3, y1: q.y - 0.2, x2: q.x + 5, y2: q.y + 0.2, h: 0 }]; }
+    else { const nb1 = surf.nb[tc * 4 + 1]; q.p = [surf.dir[nb1 * 3], surf.dir[nb1 * 3 + 1], surf.dir[nb1 * 3 + 2]]; q.segs = [{ pts: [q.p] }]; }
+    q.segT = 1; q.spd = 0; deathTimer = 0;
+    updateQix(q, 0.001);
+    assert(md + ': ヌメリンの体が線に触れるとミス', deathTimer > 0);
+  }
+  // 平面: 触手が斜めに細い線をまたいでも見逃さない
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 0; held.fast = true; steps(0, -1, 40);
+  let missed = 0;
+  for (let a = 0; a < 40; a++) {
+    const tc = trail[20], x = (tc % GW) + 0.5, y = ((tc / GW) | 0) + 0.5, ang = a / 40 * Math.PI;
+    if (Math.abs(Math.cos(ang)) < 0.2) continue;        // 線とほぼ平行な向きは除く
+    const sg = { x1: x - Math.cos(ang) * 11 + 0.37, y1: y - Math.sin(ang) * 11, x2: x + Math.cos(ang) * 11 + 0.37, y2: y + Math.sin(ang) * 11 };
+    let hit = false; surf.segEach(sg, c => { if (grid[c] === TRAIL) hit = true; return hit; });
+    if (!hit) missed++;
+  }
+  assert('触手が細い線をすり抜けない', missed === 0, missed);
+}
+buddiesOn = true;
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
