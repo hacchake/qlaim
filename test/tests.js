@@ -378,7 +378,7 @@ for (let i = 0; i < 4; i++) stepK(0); for (let i = 0; i < 3; i++) stepK(1); for 
   settings.music = 'AUTO'; settings.mode = 'KLEIN'; initLevel(1);
   assert('AUTOは盤面ごとの曲(クラインの壺=drone)', bgmName() === 'drone');
   optSel = OPT_ITEMS.findIndex(o => o.k === 'music'); adjustOpt(1);
-  assert('OPTIONSでBGMを切替', settings.music === 'CLASSIC', settings.music);
+  assert('OPTIONSでBGMを切替', settings.music === 'SPLASH', settings.music);
   settings.music = 'AUTO';
 }
 
@@ -1051,6 +1051,17 @@ assert('全曲に表示名がある', Object.keys(BGMDATA).every(k => SONG_LABEL
   settings.mode = 'ICOSA'; startGame(); score = startHi + 1; setState('over'); stTimer = 20;
   let err = null; try { render(); } catch (e) { err = e.stack; }
   assert('ハイスコア更新の表示が例外なし', !err && score > startHi, err);
+}
+
+
+// ---- 79) 音楽の強化 ----
+{
+  assert('平面の曲はスプラッシュ(ファンク)', CONFIG.SURF.PLANE.music === 'splash' && BGMDATA.splash.form.length >= 5);
+  let err = null;
+  try { Snd.note(440, 0, 0.2, 'square', 0.1, 0.01, 0.05, 6, { flt: [2000, 300, 5], vib: [5, 10], pn: 0.3, rv: 0.3 }); Snd.ohat(0, 0.1); Snd.clap(0, 0.1); Snd.tom(0, 0.1, 150); Snd.crash(0, 0.1); }
+  catch (e) { err = e.stack; }
+  assert('新しい音色・打楽器はAC無しでも安全', !err, err);
+  Bgm._load('splash'); assert('曲の読み込み', Bgm.section === 0); Bgm.stop();
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

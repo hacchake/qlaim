@@ -188,8 +188,8 @@ const CONFIG = {
      qixSpeed: QIX速度倍率 / arm: QIXの腕の長さ(セル) / pts: 得点倍率
      sparx: SPARX速度倍率 / sparxStart: 開始時のSPARX数 / sparxWait: 開始時のSPARXが動き出すまで(秒) */
   SURF: {
-    PLANE:       { label:'平面', sub:'クラシック', target:75, speed:1.00, qixSpeed:1.00, arm:11, pts:1,
-                   sparx:1.00, sparxStart:2, sparxWait:0, music:'play' },
+    PLANE:       { label:'平面', sub:'インクのステージ', target:75, speed:1.00, qixSpeed:1.00, arm:11, pts:1,
+                   sparx:1.00, sparxStart:2, sparxWait:0, music:'splash' },
     CUBE:        s3({ label:'立方体',       sub:'正多面体',           shape:'cube',        music:'chip' }),
     SPHERE:      s3({ label:'球',           sub:'なめらかな曲面',     shape:'sphere',      music:'orbit' }),
     TETRA:       s3({ label:'正四面体',     sub:'正多面体',           shape:'tetra',       music:'chip', target:68 }),
@@ -304,11 +304,11 @@ function modeSub(m) {
 }
 
 /* ---- BGMの選び方(OPTIONS)。AUTO は盤面ごとの music ---- */
-const MUSIC_KEYS = ['AUTO', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM', 'SYNTH', 'LOFI'];
+const MUSIC_KEYS = ['AUTO', 'SPLASH', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM', 'SYNTH', 'LOFI'];
 // 曲の表示名(READY 画面の「♪」)
-const SONG_LABEL = { play:'クラシック', orbit:'宇宙', chip:'チップチューン', drone:'ドローン', ambient:'アンビエント',
+const SONG_LABEL = { splash:'スプラッシュ(ファンク)', play:'クラシック', orbit:'宇宙', chip:'チップチューン', drone:'ドローン', ambient:'アンビエント',
                      idm:'IDM', synth:'シンセウェイブ', lofi:'ローファイ', title:'タイトル' };
-const MUSIC_SONG = { CLASSIC:'play', ORBIT:'orbit', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm',
+const MUSIC_SONG = { SPLASH:'splash', CLASSIC:'play', ORBIT:'orbit', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm',
                      SYNTH:'synth', LOFI:'lofi' };
 
 /* ---- 配色テーマ ----
@@ -379,6 +379,10 @@ const THEMES = [
    idm     … IDM(変拍子っぽい崩し) F#m → D → A → E
    synth   … シンセウェイブ      Am → F → C → G(4つ打ち)
    lofi    … ローファイ          Dm7 → G7 → Cmaj7 → Am7(swing: 裏拍を後ろにずらしてハネさせる)
+   splash  … ファンク(平面)      Em7 → A7 / Bメロ Cmaj7 → B7(スラップ風ベース・クラビ・ブラス)
+
+   音色の追加(v5): flt:[開始Hz,終わりHz,Q] ベースなどの「ワウッ」, vib:[速さ,深さ] ビブラート,
+     pn: 左右(-1〜1), rv: リバーブ量(省略時は長い音ほど深め)。打楽器 ohat / clap / tom(f:高さHz)
 -------------------------------------------------------------------- */
 function at(len, notes) { const a = new Array(len).fill(null); for (const k in notes) a[k] = notes[k]; return a; }
 const BGMDATA = {
@@ -397,13 +401,13 @@ const BGMDATA = {
     // A → B(別メロ) → ブレイク(アルペジオとドラムが抜ける) → サビ → 全音上に転調したサビ
     form: [ { n:2 }, { n:2, alt:true }, { n:1, mute:[1], drums:false, boost:2 }, { n:2, boost:1 }, { n:2, t:2, boost:1, alt:true } ],
     tracks: [
-    { t:'n', w:'square',   v:0.090,g:0.85,l:0, s:[
+    { t:'n', w:'square',   v:0.090,g:0.85,l:0, flt:[2400,500,5], s:[
       'A2','A2',null,'A2', null,'A2','A3','A2',  'F2','F2',null,'F2', null,'F2','F3','F2',
       'G2','G2',null,'G2', null,'G2','G3','G2',  'E2','E2',null,'E2', 'D2','D2','E2','E2'] },
     { t:'n', w:'square',   v:0.050,g:0.5, l:1, s:[
       'A4','C5','E5','A5','E5','C5','A4','C5',  'F4','A4','C5','F5','C5','A4','F4','A4',
       'G4','B4','D5','G5','D5','B4','G4','B4',  'E4','G#4','B4','E5','B4','G#4','E4','B4'] },
-    { t:'n', w:'triangle', v:0.105,g:0.8, l:2, s:[
+    { t:'n', w:'triangle', v:0.105,g:0.8, l:2, vib:[5.5, 14], s:[
       'A5',null,null,'G5', 'E5',null,'C5',null,  null,'A4',null,'C5', 'F5',null,'E5',null,
       'D5',null,null,'B4', 'G5',null,'D5',null,  'E5',null,'G#5',null,'B5',null,'E5',null], s2:[
       'E5',null,'C5','A4', 'B4',null,'C5',null,  'A4',null,'C5','F5', null,'E5','C5',null,
@@ -416,7 +420,7 @@ const BGMDATA = {
   orbit: { bpm: 124, len: 64,
     form: [ { n:1 }, { n:1, alt:true }, { n:1, mute:[0], drums:false, boost:2 }, { n:1, boost:1, alt:true }, { n:1, t:2, boost:1 } ],
     tracks: [
-    { t:'n', w:'square',   v:0.085,g:0.8, l:0, s:[
+    { t:'n', w:'square',   v:0.085,g:0.8, l:0, flt:[1800,380,6], s:[
       'D2',null,'D2','D3',  null,'D2','D3',null,  'D2',null,'D2','D3',  null,'D2','C3','D3',
       'A#1',null,'A#1','A#2', null,'A#1','A#2',null, 'A#1',null,'A#1','A#2', null,'A#1','C2','D2',
       'C2',null,'C2','C3',  null,'C2','C3',null,  'C2',null,'C2','C3',  null,'C2','D2','E2',
@@ -426,7 +430,7 @@ const BGMDATA = {
       'A#3','D4','F4','A#4','F4','D4','A#3','D4', 'A#3','D4','F4','A#4','F4','D4','A#3','D4',
       'C4','E4','G4','C5','G4','E4','C4','E4',  'C4','E4','G4','C5','G4','E4','C4','E4',
       'A3','C#4','E4','A4','E4','C#4','A3','C#4', 'A3','C#4','E4','A4','E4','C#4','A3','C#4'] },
-    { t:'n', w:'triangle', v:0.100,g:0.9, l:2, s:[
+    { t:'n', w:'triangle', v:0.100,g:0.9, l:2, vib:[5, 16], s:[
       'A5',null,null,null, 'F5',null,'E5',null,  'D5',null,null,null, 'E5',null,'F5',null,
       'D5',null,null,null, null,null,'F5',null,  'A#5',null,null,null,'A5',null,'F5',null,
       'G5',null,null,null, 'E5',null,'C5',null,  'D5',null,'E5',null, 'G5',null,null,null,
@@ -449,12 +453,12 @@ const BGMDATA = {
     // イントロ(ドラムなし) → A → B(別メロ) → ブレイク → サビ → 半音上でもう一度
     form: [ { n:1, drums:false, mute:[5] }, { n:1 }, { n:1, alt:true }, { n:1, mute:[0,1], drums:false, boost:2 }, { n:1, boost:1 }, { n:1, t:1, boost:1, alt:true } ],
     tracks: [
-    { t:'n', w:'sawtooth', v:0.050, g:0.6, det:6, l:0, s:['A1',null,'A1',null,'A2',null,'A1',null,'A1',null,'A1',null,'A2',null,'A1','A2','F1',null,'F1',null,'F2',null,'F1',null,'F1',null,'F1',null,'F2',null,'F1','F2','C2',null,'C2',null,'C3',null,'C2',null,'C2',null,'C2',null,'C3',null,'C2','C3','G1',null,'G1',null,'G2',null,'G1',null,'G1',null,'G1',null,'G2',null,'G1','G2'] },
+    { t:'n', w:'sawtooth', v:0.050, g:0.6, det:6, l:0, flt:[2600,420,7], s:['A1',null,'A1',null,'A2',null,'A1',null,'A1',null,'A1',null,'A2',null,'A1','A2','F1',null,'F1',null,'F2',null,'F1',null,'F1',null,'F1',null,'F2',null,'F1','F2','C2',null,'C2',null,'C3',null,'C2',null,'C2',null,'C2',null,'C3',null,'C2','C3','G1',null,'G1',null,'G2',null,'G1',null,'G1',null,'G1',null,'G2',null,'G1','G2'] },
     { t:'n', w:'square',   v:0.032, g:0.4, l:0, s:['A4','C5','E5','A5','E5','C5','A4','C5','E5','A5','E5','C5','A4','C5','E5','A5','F4','A4','C5','F5','C5','A4','F4','A4','C5','F5','C5','A4','F4','A4','C5','F5','C5','E5','G5','C6','G5','E5','C5','E5','G5','C6','G5','E5','C5','E5','G5','C6','G4','B4','D5','G5','D5','B4','G4','B4','D5','G5','D5','B4','G4','B4','D5','G5'] },
     { t:'n', w:'triangle', v:0.026, g:15, a:0.5, r:1.2, det:10, l:0, s:at(64, { 0:'A3', 16:'F3', 32:'C4', 48:'G3' }) },
     { t:'n', w:'triangle', v:0.026, g:15, a:0.5, r:1.2, det:10, l:0, s:at(64, { 0:'C4', 16:'A3', 32:'E4', 48:'B3' }) },
     { t:'n', w:'triangle', v:0.024, g:15, a:0.5, r:1.2, det:10, l:0, s:at(64, { 0:'E4', 16:'C4', 32:'G4', 48:'D4' }) },
-    { t:'n', w:'sawtooth', v:0.040, g:1.8, det:5, echo:1, ed:3, l:1, s:['E5',null,null,null,'A5',null,'G5','E5',null,null,'D5',null,'C5',null,null,null,'C5',null,null,null,'F5',null,'E5','C5',null,null,'A4',null,'C5',null,null,null,'G5',null,null,null,'E5',null,'C5','E5',null,null,'G5',null,'C6',null,null,null,'B5',null,null,null,'G5',null,'D5',null,'B4',null,'D5',null,'G5',null,'A5',null], s2:['A5',null,'G5',null,'E5',null,'C5',null,'D5',null,'E5',null,null,null,'A4',null,'F5',null,'E5',null,'C5',null,'A4',null,'C5',null,'F5',null,null,null,'E5',null,'E5',null,'G5',null,'C6',null,'B5',null,'G5',null,'E5',null,null,null,'C5',null,'D5',null,'G5',null,'B5',null,'D6',null,'B5',null,'G5',null,'D5',null,'B4',null] },
+    { t:'n', w:'sawtooth', v:0.040, g:1.8, det:5, echo:1, ed:3, l:1, vib:[5.5, 12], s:['E5',null,null,null,'A5',null,'G5','E5',null,null,'D5',null,'C5',null,null,null,'C5',null,null,null,'F5',null,'E5','C5',null,null,'A4',null,'C5',null,null,null,'G5',null,null,null,'E5',null,'C5','E5',null,null,'G5',null,'C6',null,null,null,'B5',null,null,null,'G5',null,'D5',null,'B4',null,'D5',null,'G5',null,'A5',null], s2:['A5',null,'G5',null,'E5',null,'C5',null,'D5',null,'E5',null,null,null,'A4',null,'F5',null,'E5',null,'C5',null,'A4',null,'C5',null,'F5',null,null,null,'E5',null,'E5',null,'G5',null,'C6',null,'B5',null,'G5',null,'E5',null,null,null,'C5',null,'D5',null,'G5',null,'B5',null,'D6',null,'B5',null,'G5',null,'D5',null,'B4',null] },
     { t:'kick',  v:0.50, l:0, p:[0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60] },
     { t:'hat',   v:0.07, l:0, p:[2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62] },
     { t:'snare', v:0.26, l:1, p:[4,12,20,28,36,44,52,60] },
@@ -472,6 +476,37 @@ const BGMDATA = {
     { t:'kick',  v:0.45, l:0, p:[0,7,10,16,23,26,32,39,42,48,55,58] },
     { t:'snare', v:0.20, l:0, p:[8,24,40,56] },
     { t:'hat',   v:0.040,l:0, pr:0.85, p:[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62] },
+  ]},
+  // スプラッシュ: 平面の曲。ファンク。Em7 → A7(Bメロは Cmaj7 → B7)。スラップ風ベース・クラビ・ブラス
+  splash: { bpm: 122, len: 32,
+    form: [ { n:1, drums:false, mute:[4] }, { n:2 }, { n:2, alt:true }, { n:1, mute:[0,1,2], boost:2 },
+            { n:2, boost:1 }, { n:2, alt:true, t:2, boost:1 } ],
+    tracks: [
+    { t:'n', w:'square', v:0.075, g:0.4, flt:[2600,320,8], rv:0.04, l:0, s:[
+      'E2',null,'E2','E3', null,'E2','G2',null, 'A2',null,'E2',null, 'B2','D3','E3',null,
+      'A1',null,'A1','A2', null,'A1','C#2',null, 'D2',null,'A1',null, 'E2','G2','A2',null], s2:[
+      'C2',null,'C2','C3', null,'C2','E2',null, 'G2',null,'C2',null, 'B1','C2','E2',null,
+      'B1',null,'B1','B2', null,'B1','D#2',null, 'F#2',null,'B1',null, 'A2','F#2','D#2',null] },
+    { t:'n', w:'square', v:0.026, g:0.25, flt:[3400,1400,3], pn:-0.35, rv:0.12, l:0,
+      s:at(32, { 2:'G4', 5:'G4', 7:'G4', 10:'G4', 13:'G4', 18:'C#5', 21:'C#5', 23:'C#5', 26:'C#5', 29:'C#5' }),
+      s2:at(32, { 2:'E4', 5:'E4', 7:'E4', 10:'E4', 13:'E4', 18:'D#4', 21:'D#4', 23:'D#4', 26:'D#4', 29:'D#4' }) },
+    { t:'n', w:'square', v:0.024, g:0.25, flt:[3400,1400,3], pn:0.35, rv:0.12, l:0,
+      s:at(32, { 2:'D5', 5:'D5', 7:'D5', 10:'D5', 13:'D5', 18:'G4', 21:'G4', 23:'G4', 26:'G4', 29:'G4' }),
+      s2:at(32, { 2:'B4', 5:'B4', 7:'B4', 10:'B4', 13:'B4', 18:'A4', 21:'A4', 23:'A4', 26:'A4', 29:'A4' }) },
+    { t:'n', w:'sawtooth', v:0.034, g:1.2, det:8, a:0.01, r:0.15, rv:0.3, pn:0.2, l:1,
+      s:at(32, { 0:'B4', 6:'B4', 14:'D5', 16:'C#5', 22:'E5', 30:'G5' }),
+      s2:at(32, { 0:'G4', 6:'B4', 14:'E5', 16:'F#4', 22:'A4', 30:'D#5' }) },
+    { t:'n', w:'square', v:0.042, g:0.9, vib:[5.5, 14], echo:1, ed:3, rv:0.3, pn:-0.1, l:2, s:[
+      'B4',null,'D5','E5', null,'D5','B4',null, 'G4',null,'A4','B4', null,null,null,null,
+      'C#5',null,'E5',null, 'G5',null,'E5','C#5', null,'A4',null,null, 'B4',null,null,null], s2:[
+      'E5',null,'G5','B5', null,'A5','G5',null, 'E5',null,null,'D5', null,null,null,null,
+      'D#5',null,'F#5',null, 'A5',null,'F#5','D#5', null,'B4',null,null, null,null,null,null] },
+    { t:'kick',  v:0.55, l:0, p:[0,6,10,16,22,26], p2:[0,3,6,10,16,19,22,26] },
+    { t:'clap',  v:0.30, l:0, p:[4,12,20,28] },
+    { t:'hat',   v:0.050, l:0, pr:0.9, p:[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30] },
+    { t:'hat',   v:0.028, l:2, p:[1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31] },
+    { t:'ohat',  v:0.060, l:1, p:[14,30] },
+    { t:'snare', v:0.06,  l:2, p:[7,15,23,31] },
   ]},
   chip: { bpm: 150, len: 32,
     form: [ { n:2 }, { n:2, alt:true }, { n:1, mute:[1], drums:false, boost:1 }, { n:2, boost:1 }, { n:2, t:2, boost:1, alt:true } ],
@@ -530,7 +565,7 @@ const BGMDATA = {
     { t:'blip',  v:0.07, l:0, pr:0.5, p:[1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31] },
     { t:'hat',   v:0.06, l:1, pr:0.75, p:[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30] },
     { t:'snare', v:0.25, l:2, p:[8,24,30] },
-    { t:'n', w:'square', v:0.050, g:0.4, det:14, l:0, s:[
+    { t:'n', w:'square', v:0.050, g:0.4, det:14, l:0, flt:[3000,300,9], s:[
       'F#2',null,'F#2','F#3',null,'F#2',null,'A2',  'D2',null,'D3','D2',null,'D2','E2',null,
       'A1','A2',null,'A1',null,'A2','C#3',null,     'E2',null,'E2','E3','E2',null,'B1',null], s2:[
       'F#2','F#3',null,'F#2','C#3',null,'F#2',null, 'D2','D3',null,'A2',null,'D2',null,'D3',
@@ -755,6 +790,7 @@ const Snd = (() => {
   let ac = null, master = null, sfxG = null, bgmG = null;
   let hum = null, muted = false, hatBuf = null;
   let bgmF = null, sfxP = null;   // BGMのこもり(ローパス) / 効果音の左右
+  let comp = null, revVol = null, ohBuf = null, crBuf = null;   // まとめ役 / リバーブの入口 / 長いノイズ
 
   function ensure() {
     if (!ac) {
@@ -762,13 +798,28 @@ const Snd = (() => {
       if (!AC) return;
       ac = new AC();
       master = ac.createGain(); master.connect(ac.destination);
-      // 効果音 → 左右パン → マスター / BGM → ローパス(こもり) → マスター
+      // 全体を軽くコンプレッサーでまとめる(音量のでこぼこを整え、音圧を出す)
+      comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -18; comp.knee.value = 10; comp.ratio.value = 3.5; comp.attack.value = 0.004; comp.release.value = 0.22;
+      comp.connect(master);
+      // 効果音 → 左右パン → コンプ / BGM → ローパス(こもり) → コンプ
       sfxP = ac.createStereoPanner ? ac.createStereoPanner() : null;
-      if (sfxP) sfxP.connect(master);
-      sfxG = ac.createGain(); sfxG.connect(sfxP || master);
+      if (sfxP) sfxP.connect(comp);
+      sfxG = ac.createGain(); sfxG.connect(sfxP || comp);
       bgmF = ac.createBiquadFilter(); bgmF.type = 'lowpass'; bgmF.frequency.value = 18000; bgmF.Q.value = 0.8;
-      bgmF.connect(master);
+      bgmF.connect(comp);
       bgmG = ac.createGain(); bgmG.connect(bgmF);
+      // リバーブ: ノイズを減衰させた残響をたたみ込む。各音から少しずつ送る
+      const rev = ac.createConvolver();
+      const n2 = Math.floor(ac.sampleRate * 2.4), ir = ac.createBuffer(2, n2, ac.sampleRate);
+      for (let ch = 0; ch < 2; ch++) { const d2 = ir.getChannelData(ch); for (let i = 0; i < n2; i++) d2[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n2, 2.8); }
+      rev.buffer = ir;
+      revVol = ac.createGain(); revVol.connect(rev);
+      const revOut = ac.createGain(); revOut.gain.value = 0.8; rev.connect(revOut); revOut.connect(bgmF);
+      // オープンハイハット・クラッシュ用の長いノイズ
+      const mk = sec => { const m = Math.floor(ac.sampleRate * sec), b = ac.createBuffer(1, m, ac.sampleRate), d3 = b.getChannelData(0);
+        for (let i = 0; i < m; i++) d3[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / m, 1.5); return b; };
+      ohBuf = mk(0.35); crBuf = mk(1.4);
       // ハイハット用の短いノイズを1つだけ作って使い回す
       const n = Math.floor(ac.sampleRate * 0.06);
       hatBuf = ac.createBuffer(1, n, ac.sampleRate);
@@ -785,6 +836,7 @@ const Snd = (() => {
     master.gain.value = muted ? 0 : 0.9;
     sfxG.gain.value = settings.sfx / 10;
     bgmG.gain.value = (settings.bgm / 10) * 0.55;
+    if (revVol) revVol.gain.value = (settings.bgm / 10) * 0.55;   // リバーブも BGM 音量に合わせる
   }
   function toggleMute() { muted = !muted; applyVols(); return muted; }
   // 毎フレーム: 場面に合わせてBGMをこもらせる / 効果音を自機の位置へ振る
@@ -835,16 +887,62 @@ const Snd = (() => {
   }
 
   /* -- BGM用ドラム(絶対時刻指定) -- */
+  // 送り: ノード n からリバーブへ amt だけ
+  function send(n, amt) { if (!revVol || !amt) return; const s = ac.createGain(); s.gain.value = amt; n.connect(s); s.connect(revVol); }
   function kick(t, v) {
+    if (!ac) return;
+    // 胴: 高めから一気に下がるサイン波
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(165, t);
+    o.frequency.exponentialRampToValueAtTime(44, t + 0.11);
+    g.gain.setValueAtTime(v, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    o.connect(g); g.connect(bgmG);
+    o.start(t); o.stop(t + 0.3);
+    // アタックの「カチッ」
+    if (hatBuf) {
+      const s = ac.createBufferSource(); s.buffer = hatBuf;
+      const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+      const cg = ac.createGain(); cg.gain.setValueAtTime(v * 0.35, t); cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.015);
+      s.connect(hp); hp.connect(cg); cg.connect(bgmG); s.start(t); s.stop(t + 0.03);
+    }
+  }
+  function ohat(t, v) {           // オープンハイハット
+    if (!ac || !ohBuf) return;
+    const s = ac.createBufferSource(); s.buffer = ohBuf;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+    const g = ac.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    s.connect(hp); hp.connect(g); g.connect(bgmG); send(g, 0.15);
+    s.start(t);
+  }
+  function crash(t, v) {          // クラッシュシンバル(セクションの頭)
+    if (!ac || !crBuf) return;
+    const s = ac.createBufferSource(); s.buffer = crBuf;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 4500;
+    const g = ac.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+    s.connect(hp); hp.connect(g); g.connect(bgmG); send(g, 0.35);
+    s.start(t);
+  }
+  function tom(t, v, f) {         // タム(フィルで駆け下りる)
     if (!ac) return;
     const o = ac.createOscillator(), g = ac.createGain();
     o.type = 'sine';
-    o.frequency.setValueAtTime(150, t);
-    o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
-    g.gain.setValueAtTime(v, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
-    o.connect(g); g.connect(bgmG);
-    o.start(t); o.stop(t + 0.16);
+    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.55, t + 0.2);
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g); g.connect(bgmG); send(g, 0.2);
+    o.start(t); o.stop(t + 0.25);
+  }
+  function clap(t, v) {           // クラップ(3回のノイズの粒が重なる)
+    if (!ac || !hatBuf) return;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1300; bp.Q.value = 1.2;
+    const g = ac.createGain(); g.gain.value = v;
+    bp.connect(g); g.connect(bgmG); send(g, 0.3);
+    for (const dt of [0, 0.011, 0.023]) {
+      const s = ac.createBufferSource(); s.buffer = hatBuf;
+      const e = ac.createGain(); e.gain.setValueAtTime(1, t + dt); e.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.06);
+      s.connect(e); e.connect(bp); s.start(t + dt);
+    }
   }
   function hat(t, v) {
     if (!ac || !hatBuf) return;
@@ -861,12 +959,13 @@ const Snd = (() => {
     const g = ac.createGain();
     g.gain.setValueAtTime(v, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
-    s.connect(bp); bp.connect(g); g.connect(bgmG);
+    s.connect(bp); bp.connect(g); g.connect(bgmG); send(g, 0.22);
     s.start(t);
     tone(190, 120, 0.07, 'triangle', v * 0.7, 0, 'bgm', t);
   }
   // BGMメロディ音(絶対時刻)。a=立ち上がり秒, r=余韻秒, det=うなり(セント)
-  function note(freq, t, dur, wave, vol, a, r, det) {
+  // x: { flt:[開始Hz, 終わりHz, Q] フィルターの開閉, vib:[速さHz, 深さセント] ビブラート, pn:左右(-1〜1), rv:リバーブ量 }
+  function note(freq, t, dur, wave, vol, a, r, det, x) {
     if (!ac) return;
     a = a || 0.012; r = r || 0.03;
     const hold = Math.max(t + a, t + dur - r), end = hold + r;
@@ -876,13 +975,33 @@ const Snd = (() => {
     g.gain.linearRampToValueAtTime(v, t + a);
     g.gain.setValueAtTime(v, hold);
     g.gain.linearRampToValueAtTime(0.0001, end);
-    g.connect(bgmG);
+    x = x || {};
+    // 左右
+    if (x.pn && ac.createStereoPanner) { const pn = ac.createStereoPanner(); pn.pan.value = x.pn; g.connect(pn); pn.connect(bgmG); }
+    else g.connect(bgmG);
+    send(g, x.rv);
+    // フィルター(ベースの「ワウッ」)
+    let dest = g;
+    if (x.flt) {
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = x.flt[2] || 1;
+      f.frequency.setValueAtTime(x.flt[0], t);
+      f.frequency.exponentialRampToValueAtTime(Math.max(60, x.flt[1]), t + Math.max(0.04, Math.min(dur, 0.6)));
+      f.connect(g); dest = f;
+    }
+    // ビブラート(少し遅れてかかる)
+    let lg = null;
+    if (x.vib) {
+      const lfo = ac.createOscillator(); lfo.frequency.value = x.vib[0];
+      lg = ac.createGain(); lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(x.vib[1], t + Math.min(0.25, dur));
+      lfo.connect(lg); lfo.start(t); lfo.stop(end + 0.05);
+    }
     for (const d of det ? [-det, det] : [0]) {
       const o = ac.createOscillator();
       o.type = wave;
       o.frequency.setValueAtTime(freq, t);
       o.detune.value = d;
-      o.connect(g);
+      if (lg) lg.connect(o.detune);
+      o.connect(dest);
       o.start(t); o.stop(end + 0.05);
     }
   }
@@ -920,7 +1039,7 @@ const Snd = (() => {
   const SCALE = [0, 3, 5, 7, 10, 12, 15, 17]; // ペンタトニック風
   return {
     ensure, applyVols, toggleMute, stopDraw, startDraw, updateDraw, react, sweep,
-    note, kick, hat, snare, blipDrum,
+    note, kick, hat, snare, blipDrum, ohat, crash, tom, clap,
     get ac() { return ac; },
     claim(cells, slow) {
       const n = 3 + Math.min(4, Math.floor(cells / 400));
@@ -1003,9 +1122,13 @@ const Bgm = (() => {
         const f = hz(nm) * tp * (up ? 2 : 1);
         if (i === 0 && tr.l === 0) rootHz = hz(nm) * tp;       // 先頭トラック(ベース)の音を覚えておく
         const dur = Math.max(0.03, stepDur * tr.g);
-        Snd.note(f, t, dur, tr.w, tr.v, tr.a, tr.r, tr.det);
-        for (let e = 1; e <= (tr.echo || 0); e++)            // やまびこ
-          Snd.note(f, t + e * tr.ed * stepDur, dur, tr.w, tr.v * Math.pow(0.45, e), tr.a, tr.r, tr.det);
+        // 指定がなければ: 長い音(パッド)は深めのリバーブ、上のレイヤーは左右に振り分ける
+        const x = { flt: tr.flt, vib: tr.vib,
+          rv: tr.rv != null ? tr.rv : tr.g >= 8 ? 0.45 : tr.l >= 1 ? 0.28 : 0.06,
+          pn: tr.pn != null ? tr.pn : tr.l >= 1 ? (i % 2 ? -0.3 : 0.3) : 0 };
+        Snd.note(f, t, dur, tr.w, tr.v, tr.a, tr.r, tr.det, x);
+        for (let e = 1; e <= (tr.echo || 0); e++)            // やまびこ(左右に跳ねる)
+          Snd.note(f, t + e * tr.ed * stepDur, dur, tr.w, tr.v * Math.pow(0.45, e), tr.a, tr.r, tr.det, Object.assign({}, x, { pn: -(x.pn || 0.4) }));
       } else {
         const set = sec.alt && tr.set2 ? tr.set2 : tr.set;
         if (!set.has(st)) continue;
@@ -1013,12 +1136,20 @@ const Bgm = (() => {
         else if (tr.t === 'hat') Snd.hat(t, tr.v);
         else if (tr.t === 'snare') Snd.snare(t, tr.v);
         else if (tr.t === 'blip') Snd.blipDrum(t, tr.v);
+        else if (tr.t === 'ohat') Snd.ohat(t, tr.v);
+        else if (tr.t === 'clap') Snd.clap(t, tr.v);
+        else if (tr.t === 'tom') Snd.tom(t, tr.v, tr.f || 140);
       }
     }
-    // フィル: 次のセクションへ移る直前の4ステップはスネアを連打して盛り上げる
+    // セクションの頭でクラッシュ
+    const hasDrums = song.tracks.some(tr => tr.t === 'kick');
+    if (song.form && st === 0 && formRep === 0 && sec.drums !== false && hasDrums) Snd.crash(t, 0.12);
+    // フィル: 次のセクションへ移る直前の4ステップはタムが駆け下りて、最後はスネア
     if (song.form && song.form.length > 1 && formRep === sec.n - 1 && sec.drums !== false
-        && st >= song.len - 4 && song.tracks.some(tr => tr.t === 'snare'))
-      Snd.snare(t, 0.10 + 0.05 * (st - song.len + 4));
+        && st >= song.len - 4 && hasDrums) {
+      const k = st - song.len + 4;
+      if (k < 3) Snd.tom(t, 0.28, [200, 150, 110][k]); else Snd.snare(t, 0.26);
+    }
   }
   function tick() {
     if (!Snd.ac || !song) return;
@@ -4333,6 +4464,7 @@ let padPrev = new Set();
 // 振動: スマホ(vibrate)とゲームパッド(ランブル)。「画面揺れ」OFFなら振動もしない
 function buzz(ms, strong) {
   if (!settings.shake || typeof navigator === 'undefined') return false;
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;   // まだ一度も操作していない
   try {
     if (navigator.vibrate) navigator.vibrate(ms);
     const gp = navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.vibrationActuator) : null;
