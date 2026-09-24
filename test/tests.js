@@ -884,5 +884,15 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('吹き出しの描画・クリア音が例外なし', !err, err);
 }
 
+
+// ---- 62) SPARXの見た目(尾) ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  for (let i = 0; i < 20; i++) sparxes.forEach(stepSparx);
+  assert('SPARXは通った跡を5つまで覚える', sparxes.every(s => s.hist && s.hist.length === 5));
+  let err = null; try { render(); settings.mode = 'SPHERE'; startGame(); stTimer = 2; tickMeta(0.016); sparxes.forEach(s => s.wait = 0); for (let i = 0; i < 10; i++) sparxes.forEach(stepSparx); render(); } catch (e) { err = e.stack; }
+  assert('SPARXの描画が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
