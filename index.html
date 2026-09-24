@@ -660,7 +660,7 @@ function unlock(id) {
 const hasAll = keys => keys.every(k => bestPct[k] != null);
 
 /* ---- あそんだ記録(統計)。OPTIONS「あそんだ記録」で表示 ---- */
-const stats = Object.assign({ games:0, time:0, claims:0, cells:0, items:0, splits:0, seekers:0, clears:0, plays:{} },
+const stats = Object.assign({ games:0, time:0, claims:0, cells:0, items:0, splits:0, seekers:0, clears:0, plays:{}, maxArea:{} },
                             store.get('qlaim.stats', {}));
 function saveStats() { store.set('qlaim.stats', stats); }
 function favSurface() {
@@ -1767,7 +1767,11 @@ function initLevel(lv) {
   seekers = [];
   slowT = 0; starT = 0; combo = 0; comboT = 0; guarded = false; areaTime = 0;
   areaMiss = 0; areaFast = false;
-  if (state !== 'title') stats.plays[surf.key] = (stats.plays[surf.key] || 0) + 1;
+  if (state !== 'title') {
+    stats.plays[surf.key] = (stats.plays[surf.key] || 0) + 1;
+    stats.maxArea = stats.maxArea || {};
+    if (!(stats.maxArea[modeKey()] >= lv)) stats.maxArea[modeKey()] = lv;   // 最高到達エリア
+  }
   const s = surf.setup();
   homeCell = s.home;
   initOpen = 0;
@@ -3446,7 +3450,7 @@ function renderHUD() {
   ctx.textAlign = 'right';
   ctx.fillStyle = '#8fa3d9';
   ctx.font = "bold 11px 'Courier New', monospace";
-  ctx.fillText('AREA ' + level + ' ' + surf.def.label, W - 52, 16);
+  ctx.fillText('AREA ' + level + (settings.mode === 'TOUR' ? '/' + CONFIG.TOUR.length : '') + ' ' + surf.def.label, W - 52, 16);
   for (let i = 0; i < Math.min(lives, 6); i++) drawClawd(W - 62 - i * 16, 30, 1);
   ctx.fillStyle = '#6d7ba8';
   ctx.font = "bold 10px 'Courier New', monospace";
@@ -3537,7 +3541,7 @@ function renderOverlay() {
     const rec = isZen() ? '記録なし ─ のんびりどうぞ' : settings.mode === 'DAILY'
       ? todayStr().replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') + ' の記録  ' + (hiScore ? String(hiScore).padStart(7, '0') : 'まだなし')
       : settings.mode === 'TOUR'
-      ? 'クリアした盤面  ' + nClear + ' / ' + Object.keys(CONFIG.SURF).length
+      ? 'クリア ' + nClear + '/' + Object.keys(CONFIG.SURF).length + '  最高 AREA ' + ((stats.maxArea || {}).TOUR || '-')
       : bestPct[settings.mode] != null ? '★ クリア済み  最高 ' + bestPct[settings.mode] + '%' : '未クリア';
     ctx.fillStyle = isZen() ? '#9dffea' : bestPct[settings.mode] != null || settings.mode === 'TOUR' || settings.mode === 'DAILY' ? '#ffd76b' : '#6d7ba8';
     ctx.fillText(rec + '    ←→ で盤面をえらぶ', W / 2, 560);

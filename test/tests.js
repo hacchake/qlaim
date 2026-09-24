@@ -906,5 +906,15 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('危険表示の描画が例外なし', !err, err);
 }
 
+
+// ---- 64) TOURの最高到達エリア ----
+{
+  settings.mode = 'TOUR'; startGame(); stTimer = 2; tickMeta(0.016);
+  for (let i = 0; i < 3; i++) { claimed = Math.ceil(initOpen * 0.8); startClear(false); nextLevel(); }
+  assert('TOURの最高到達エリアを記録', stats.maxArea.TOUR >= 4, stats.maxArea.TOUR);
+  let err = null; try { render(); backToTitle(); render(); } catch (e) { err = e.stack; }
+  assert('HUD・タイトル表示が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
