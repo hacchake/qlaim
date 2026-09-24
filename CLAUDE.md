@@ -81,6 +81,15 @@ node test/run-tests.js
 - 結果の共有: `resultText` / `shareResult`(ゲームオーバー画面、Sキー)
 - QIXの突進: `QIX_DASH_FROM`、各盤面の `qixAim`
 - Clawdのひとこと: `say` / `speech` / `drawSpeech`
+- 危険の知らせ: `calcDanger` / `drawDangerEdge`(SPARX・SEEKERが近いと「!」と赤いふち)
+- TOURの最高到達エリア: `stats.maxArea`
+- 最後の1機の鼓動: `heartT` / `Snd.heart`
+- アイテムZAP: SPARX一掃・SEEKERの `stun`
+- エンディング: `startEnding` / `finishEnding` / `drawEnding`(state 'ending'、TOUR 1周)
+- Clawdの色 RAINBOW(col:null は虹色)
+- 盤面の豆知識: `SURF_INFO`(READY画面)
+- あそびかた: `openHelp` / `closeHelp` / `drawHelp`(state 'help'、タイトルのH・ポーズメニュー)
+- ゲームオーバーで R = すぐもう一度
 
 ## 操作
 - 方向キーで空き地へ進むと、ボタン無しでゆっくり線を引く(×2点)。Z/スペースを押している間だけ速い(×1点)。
