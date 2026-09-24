@@ -891,6 +891,8 @@ const Snd = (() => {
       for (let i = 0; i < n; i++)
         tone(base * Math.pow(2, SCALE[i] / 12), 0, 0.1, 'square', 0.11, i * 0.055);
     },
+    // 心臓の鼓動(ドクン、ドクン)
+    heart()  { tone(70, 45, 0.12, 'sine', 0.22); tone(64, 42, 0.12, 'sine', 0.16, 0.16); },
     item()   { [660,880,1320,1760].forEach((f,i)=>tone(f,f*1.02,0.08,'triangle',0.12,i*0.05)); },
     big()    { [587,740,880,1175].forEach((f,i)=>tone(f,f*1.5,0.12,'sawtooth',0.09,0.25+i*0.05)); },
     death()  { tone(500, 60, 0.5, 'sawtooth', 0.18); noise(0.35, 0.18); },
@@ -1638,6 +1640,7 @@ let pauseSel = 0;               // ポーズメニューの選択行
 let continues = 0;              // このゲームでコンティニューした回数
 let demoT = 0, demoLv = 1;      // タイトルのデモ: 背景の盤面を巡らせる
 let bonusT = 0;                 // BONUS AREA の残り時間
+let heartT = 0;                 // 心臓の鼓動の間隔
 function isBonus(lv) { lv = lv || level; return !isZen() && lv % CONFIG.BONUS_EVERY === 0; }
 // 自動軽量化: プレイ中に重い(1フレーム28ms超が続く)ときは発光を切る。設定は保存しない
 const perf = { avg: 1 / 60, slowT: 0, lite: false };
@@ -2680,6 +2683,8 @@ function update(dt) {
   updateSeekers(dt);
   updateItems(dt);
   areaTime += dt;
+  // 残機0(最後の1機)のときは心臓の鼓動
+  if (lives === 0 && !isZen()) { heartT -= dt; if (heartT <= 0) { Snd.heart(); heartT = 0.95; } } else heartT = 0;
   stats.time += dt;
   if (tutorStep >= 0) { tutorT += dt; if (tutorStep === 3 && tutorT > 6) tutorAdvance(4); }
   // BONUS AREA: 時間切れでクリア(それまでの占領率でボーナス)

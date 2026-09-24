@@ -916,5 +916,13 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('HUD・タイトル表示が例外なし', !err, err);
 }
 
+
+// ---- 65) 最後の1機で鼓動 ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); lives = 0; heartT = 0;
+  let err = null; try { update(1/60); } catch (e) { err = e.stack; }
+  assert('残機0で鼓動のタイマーが動く(AC無しでも安全)', !err && heartT > 0.8, err || heartT);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
