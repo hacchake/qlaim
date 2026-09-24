@@ -2375,6 +2375,7 @@ function nearMiss() {
   checkExtend();
   const p = surf.screenOf(player.c);
   floats.push({ x: p.x, y: p.y - 26, txt: 'ギリギリ! +' + pts, t: 1.2, col: '#ffe25c' });
+  spawnParticles(p.x, p.y, 14, '#ffe25c');
   say('ひやっ!', 1.0);
   Snd.blip();
 }
