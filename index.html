@@ -3880,6 +3880,10 @@ function renderOverlay() {
       ctx.fillText(SURF_INFO[surf.key] || '', W / 2, H / 2 + 30);
       ctx.fillStyle = '#9dffea';
       ctx.fillText('♪ ' + (SONG_LABEL[bgmName()] || bgmName()), W / 2, H - 20);
+      if (stats.plays[surf.key] === 1 && blinkOn) {     // この盤面は初めて
+        ctx.fillStyle = '#ffd76b'; ctx.font = "bold 14px 'Courier New', monospace";
+        ctx.fillText('★ はじめての盤面! ★', W / 2, H / 2 - 88);
+      }
       if (blinkOn) {
         ctx.fillStyle = '#ffffff';
         ctx.font = "bold 22px 'Courier New', monospace";
