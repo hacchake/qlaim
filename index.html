@@ -2942,6 +2942,7 @@ function render2D(t) {
   ctx.rect(0, FIELD_Y, W, H - FIELD_Y);
   ctx.clip();
   ctx.globalCompositeOperation = 'lighter';
+  drawQixRibbons();
   for (const q of qixes) {
     for (let i = 0; i < q.segs.length; i++) {
       const s = q.segs[i];
@@ -2958,6 +2959,32 @@ function render2D(t) {
     }
   }
   ctx.restore();
+}
+
+/* ---- QIXのリボン: 隣り合う残像の間を半透明の帯で塗る ---- */
+function qixEnds(sg) {
+  if (!surf.is3D) return [{ x: sg.x1 * CS, y: FIELD_Y + sg.y1 * CS }, { x: sg.x2 * CS, y: FIELD_Y + sg.y2 * CS }];
+  const S = surf, a = sg.pts[0], b = sg.pts[sg.pts.length - 1];
+  if (!visA[S.ptCell(a)] || !visA[S.ptCell(b)]) return null;
+  const wa = S.world(a), wb = S.world(b);
+  if (vdist(wa, wb) > 0.6) return null;          // 貼り合わせの縁をまたいだものは描かない
+  return [projXYZ(wa[0] * 1.012, wa[1] * 1.012, wa[2] * 1.012), projXYZ(wb[0] * 1.012, wb[1] * 1.012, wb[2] * 1.012)];
+}
+function drawQixRibbons() {
+  for (const q of qixes) {
+    let prev = null;
+    for (let i = 0; i < q.segs.length; i++) {
+      const e = qixEnds(q.segs[i]);
+      if (e && prev) {
+        ctx.fillStyle = qixStroke(q.segs[i].h, 55, 0.12 * (i + 1) / q.segs.length);
+        ctx.beginPath();
+        ctx.moveTo(prev[0].x, prev[0].y); ctx.lineTo(prev[1].x, prev[1].y);
+        ctx.lineTo(e[1].x, e[1].y); ctx.lineTo(e[0].x, e[0].y);
+        ctx.closePath(); ctx.fill();
+      }
+      prev = e;
+    }
+  }
 }
 
 /* ---- 描いている線の光(平面・立体共通) ---- */
@@ -3138,6 +3165,7 @@ function render3D(t) {
 
   // QIX: 腕は表面に沿った折れ線。見えている部分だけ、加算合成で光らせる
   ctx.globalCompositeOperation = 'lighter';
+  drawQixRibbons();
   for (const q of qixes) {
     for (let i = 0; i < q.segs.length; i++) {
       const s = q.segs[i];
