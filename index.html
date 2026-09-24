@@ -919,6 +919,7 @@ const Snd = (() => {
       let base = Bgm.root();
       if (base) { while (base < 300) base *= 2; if (!slow) base *= 0.75; }
       else base = slow ? 392 : 330;
+      base *= Math.pow(2, Math.min(combo, 6) / 12);   // コンボが続くほど半音ずつ上がる
       for (let i = 0; i < n; i++)
         tone(base * Math.pow(2, SCALE[i] / 12), 0, 0.1, 'square', 0.11, i * 0.055);
     },
