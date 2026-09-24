@@ -470,7 +470,6 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   let bad = [];
   for (const k in BGMDATA) {
     const sg = BGMDATA[k];
-    if (k === 'title') continue;
     if (!sg.form || sg.form.length < 3) bad.push(k + ':formなし');
     else for (const sec of sg.form) {
       if (!(sec.n >= 1)) bad.push(k + ':n');
@@ -665,6 +664,20 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('囲んだ陣地に年輪の縞(両方の色がある)', r0 > 0 && r1 > 0, r0 + '/' + r1);
   for (let i = 0; i < 120; i++) tickMeta(1/60);
   assert('描き終わるとカメラが戻る', Math.abs(cam.D - 3.4) < 0.05, cam.D.toFixed(2));
+}
+
+
+// ---- 45) タイトルのデモ ----
+{
+  settings.mode = 'TOUR'; backToTitle(); cycleMode(0);
+  const k0 = surf.key;
+  for (let i = 0; i < 9 * 60; i++) tickMeta(1/60);
+  assert('タイトル(TOUR)で背景の盤面が巡る', surf.key !== k0 && state === 'title', k0 + '→' + surf.key);
+  startGame();
+  assert('スタートするとAREA1の盤面から', surf.key === surfaceFor(1) && level === 1);
+  settings.mode = 'CUBE'; backToTitle(); cycleMode(0);
+  for (let i = 0; i < 9 * 60; i++) tickMeta(1/60);
+  assert('単独の盤面を選んでいるときは巡らない', surf.key === 'CUBE');
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

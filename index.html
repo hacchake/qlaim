@@ -318,10 +318,15 @@ const THEMES = [
 -------------------------------------------------------------------- */
 function at(len, notes) { const a = new Array(len).fill(null); for (const k in notes) a[k] = notes[k]; return a; }
 const BGMDATA = {
-  title: { bpm: 92, len: 16, fixed: 1, tracks: [
+  title: { bpm: 92, len: 16, fixed: 1,
+    // Am → F を4回、別の分散和音で2回、全音下(Gm → E♭)で2回、ドラムなしで静かに2回
+    form: [ { n:4 }, { n:2, alt:true }, { n:2, t:-2 }, { n:2, alt:true, drums:false, mute:[2] } ],
+    tracks: [
     { t:'n', w:'triangle', v:0.11, g:7,   l:0, s:['A2',null,null,null,null,null,null,null,'F2',null,null,null,null,null,null,null] },
-    { t:'n', w:'sine',     v:0.060,g:0.95,l:0, s:['A4','E4','C5','E4','A4','E4','C5','E4','F4','C4','A4','C4','F4','C4','A4','C4'] },
-    { t:'n', w:'square',   v:0.028,g:0.5, l:1, s:[null,null,'E5',null,null,null,'C5',null,null,null,'A4',null,null,null,'B4',null] },
+    { t:'n', w:'sine',     v:0.060,g:0.95,l:0, s:['A4','E4','C5','E4','A4','E4','C5','E4','F4','C4','A4','C4','F4','C4','A4','C4'],
+      s2:['E5','C5','A4','C5','E5','C5','A4','E4','F5','C5','A4','C5','A4','F4','C4','F4'] },
+    { t:'n', w:'square',   v:0.028,g:0.5, l:1, s:[null,null,'E5',null,null,null,'C5',null,null,null,'A4',null,null,null,'B4',null],
+      s2:[null,null,null,null,'A5',null,'G5',null,null,null,'F5',null,'E5',null,'C5',null] },
     { t:'hat', v:0.045, l:0, p:[0,8] },
   ]},
   play: { bpm: 138, len: 32,
@@ -1523,6 +1528,7 @@ let guarded = false;            // SHIELD でミスを防いだ最中
 let areaTime = 0;               // このエリアの経過時間
 let pauseSel = 0;               // ポーズメニューの選択行
 let continues = 0;              // このゲームでコンティニューした回数
+let demoT = 0, demoLv = 1;      // タイトルのデモ: 背景の盤面を巡らせる
 let areaMiss = 0, areaFast = false;   // このエリアでのミス数 / Zを使ったか(実績用)
 /* チュートリアル: 初めての1ゲームだけ、やることを順に教える
    0:歩く → 1:空き地へ出て線を引く → 2:線につないで囲む → 3:クリア条件(数秒で終わり)
@@ -2292,6 +2298,7 @@ function backToTitle() {
 
 // タイトル画面で盤面モードを切り替える(背景のデモ盤面も差し替わる)
 function cycleMode(dir) {
+  demoT = 0; demoLv = 1;
   const i = MODES.indexOf(settings.mode);
   settings.mode = MODES[(i + dir + MODES.length) % MODES.length];
   hiScore = hiOf(modeKey());
@@ -2441,6 +2448,11 @@ function update(dt) {
 // 状態遷移などフレーム毎の付随処理(ヘッドレステスト可能なよう分離)
 function tickMeta(dt) {
   if (shakeT > 0) shakeT -= dt;
+  // タイトル(TOUR/DAILY)では8秒ごとに背景の盤面を次へ
+  if (state === 'title' && (settings.mode === 'TOUR' || settings.mode === 'DAILY')) {
+    demoT += dt;
+    if (demoT > 8) { demoT = 0; demoLv++; initLevel(demoLv); }
+  } else demoT = 0;
   // 音の反応: 導火線やポーズでBGMがこもる、ピンチ(残機0)でも少しこもる
   const cut = state === 'pause' ? 500 : (fuse.lit && player.drawing) ? 1100 : deathTimer > 0 ? 700
             : (state === 'play' && lives === 0) ? 6000 : 18000;
