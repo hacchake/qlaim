@@ -1564,10 +1564,10 @@ function camFollow(c, dt) {
 }
 function updateCamera(dt) {
   if (!surf.is3D) return;
-  // 線を引いている間は少し引いて、まわりを見やすく
+  // 線を引いている間は少し引いて、まわりを見やすく(READY中は速めに寄ってワープ感)
   // X(held.slow)を押している間は大きく引いて全体を見渡す
   const wantD = (state === 'play' || state === 'ready') && held.slow ? 5.3 : state === 'play' && player.drawing ? 3.95 : 3.4;
-  cam.D += (wantD - cam.D) * (1 - Math.exp(-dt * 2.5));
+  cam.D += (wantD - cam.D) * (1 - Math.exp(-dt * (state === 'ready' ? 3.5 : 2.5)));
   if (state === 'play' || state === 'ready') camFollow(player.c, dt);
   else if (state !== 'pause') camRotate([0.25, 1, 0], dt * 0.35); // タイトル等ではゆっくり回る
 }
@@ -1738,7 +1738,10 @@ function initLevel(lv) {
   player.acc = 0; player.drawing = false; player.usedFast = false; player.invuln = 0;
   trail = []; trailStart = -1;
   fuseReset();
-  if (surf.is3D) camSnap([surf.dir[player.c * 3], surf.dir[player.c * 3 + 1], surf.dir[player.c * 3 + 2]]);
+  if (surf.is3D) {
+    camSnap([surf.dir[player.c * 3], surf.dir[player.c * 3 + 1], surf.dir[player.c * 3 + 2]]);
+    if (state !== 'title') cam.D = 9;   // ワープ: 遠くから飛び込んでくる(updateCamera が 3.4 へ寄せる)
+  }
 
   const bonus = isBonus(lv) && state !== 'title';
   bonusT = bonus ? CONFIG.BONUS_TIME : 0;
@@ -2339,8 +2342,8 @@ function startGame() {
   continues = 0;
   tutorStep = settings.tutor ? -1 : 0; tutorT = 0;
   nextExtend = CONFIG.EXTEND_FIRST;
+  setState('ready');              // 先に READY にしてから盤面を作る(ワープ入場する)
   initLevel(1);
-  setState('ready');
   Bgm.play(bgmName());
   Snd.ready();
 }
@@ -2402,8 +2405,8 @@ function nextLevel() {
 }
 
 function backToTitle() {
+  setState('title');              // 先にタイトルにしておく(ワープ入場をさせない)
   initLevel(1);
-  setState('title');
   Bgm.play('title');
 }
 
@@ -3043,6 +3046,18 @@ function drawBackdrop() {
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
     ctx.fillRect(x - nb.r, y - nb.r, nb.r * 2, nb.r * 2);
+  }
+  // ワープ中(カメラが遠い)は星が放射状に流れる
+  const warp = clamp((cam.D - 3.6) / 5, 0, 1);
+  if (warp > 0.02) {
+    ctx.strokeStyle = 'rgba(200,220,255,0.55)'; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (const s of STARS) {
+      const d = s.d;
+      const x = cx + (R[0] * d[0] + R[1] * d[1] + R[2] * d[2]) * 640, y = cy - (R[3] * d[0] + R[4] * d[1] + R[5] * d[2]) * 640;
+      ctx.moveTo(x, y); ctx.lineTo(x + (x - cx) * warp * 0.5, y + (y - cy) * warp * 0.5);
+    }
+    ctx.stroke();
   }
   ctx.fillStyle = '#ffffff';
   for (const s of STARS) {

@@ -656,7 +656,7 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
 {
   settings.mode = 'SPHERE'; settings.tutor = true; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 99;
   for (let i = 0; i < 8; i++) stepK(0); for (let i = 0; i < 4; i++) stepK(1);
-  const D0 = cam.D; for (let i = 0; i < 60; i++) tickMeta(1/60);
+  cam.D = 3.4; const D0 = cam.D; for (let i = 0; i < 60; i++) tickMeta(1/60);
   assert('線を引いている間はカメラが引く', cam.D > D0 + 0.2, D0.toFixed(2) + '→' + cam.D.toFixed(2));
   for (let i = 0; i < 30 && player.drawing; i++) stepK(2);
   let r0 = 0, r1 = 0;
@@ -803,6 +803,19 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   const ev = key => ({ key, repeat: false, preventDefault() {} });
   onKeyDown(ev('m')); onKeyDown(ev('c')); onKeyDown(ev('9'));
   assert('名前入力でMとCが打てる', state === 'over' && rankOf('OCTA')[0].n === 'MC9', rankOf('OCTA')[0] && rankOf('OCTA')[0].n);
+}
+
+
+// ---- 56) ワープの入場 ----
+{
+  settings.mode = 'ICOSA'; backToTitle(); startGame();
+  assert('タイトルからの開始でもカメラが遠くから', cam.D > 8, cam.D);
+  for (let i = 0; i < 90; i++) tickMeta(1/60);
+  assert('READYの間に寄ってくる', cam.D < 4, cam.D.toFixed(2));
+  let err = null; try { cam.D = 7; render(); } catch (e) { err = e.stack; }
+  assert('ワープの星の流れの描画が例外なし', !err, err);
+  backToTitle();
+  assert('タイトルのデモは普通の距離', cam.D < 9);
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
