@@ -1880,15 +1880,16 @@ function target()    { return surf.def.target; }
    INK テーマでは、線を1本閉じるたびにインクの色が変わる(ローラーの色 = 次に塗る色)。
    colA の番号: 0 線 / 1..8 テーマの色 / 9 HOME / INK_BASE.. インク色 / RB_BASE.. 虹(帯の番号)
    OPTIONS「インク」で MIX(いろいろ)・RAINBOW(いつも虹)・固定色(ネット対戦ができたら自分の色)を選べる */
-const INK_COLORS = ['#ff8a1f', '#ff4fa3', '#3ec6ff', '#7ee03a', '#b46bff', '#ffd22e', '#ff5a4a', '#2fe0b8',
-                    '#ff7ad9', '#5a7dff', '#c6f03a', '#ff9e6b', '#40e8ff', '#e85aff', '#35d07f', '#ffb3e6'];
+// 色相がはっきり違う12色(似た色を入れない。緑系は2色まで)
+const INK_COLORS = ['#ff8a1f', '#ff4fa3', '#3ec6ff', '#5fd34a', '#a66bff', '#ffd22e',
+                    '#ff4a4a', '#22d6b4', '#4a6bff', '#e44bff', '#9a6a44'];
 const GOLD_INK = INK_COLORS.length;             // STAR 中は金のインク
 const INK_ALL = INK_COLORS.concat(['#ffcc33']);
 const INK_BASE = 10, RB_BASE = INK_BASE + INK_ALL.length, RB_N = 12;
 const RB_COLORS = Array.from({ length: RB_N }, (_, i) => hslHex(i * 360 / RB_N, 88, 58));
-const INK_FIXED = { ORANGE:0, PINK:1, CYAN:2, LIME:3, PURPLE:4, YELLOW:5, RED:6, BLUE:9 };
+const INK_FIXED = { ORANGE:0, PINK:1, CYAN:2, LIME:3, PURPLE:4, YELLOW:5, RED:6, BLUE:8 };
 const INK_OPTS = ['MIX', 'RAINBOW'].concat(Object.keys(INK_FIXED));
-const ink = { i: 0, rainbowT: 0, ang: 0, v: [1, 0, 0], rt: 0 };
+const ink = { i: 0, rainbowT: 0, ang: 0, v: [1, 0, 0], rt: 0, recent: [] };
 function hueOf(hex) {
   const [r, g, b] = rgbOf(hex).map(v => v / 255), mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
   if (!d) return 0;
@@ -1901,10 +1902,12 @@ function inkRainbow() { return ink.rainbowT > 0 || settings.ink === 'RAINBOW'; }
 function nextInk() {
   const f = INK_FIXED[settings.ink];
   if (f != null) ink.i = f;
-  else {   // 前の色と色相が近すぎない色を選ぶ(黄色のあとに黄緑、などを避ける)
+  else {   // 直前の3色は使わず、前の色と色相も離す(となりの陣地が同じ色・似た色にならないように)
     let i, n = 0;
-    do i = (Math.random() * INK_COLORS.length) | 0; while ((i === ink.i || hueGap(INK_COLORS[i], INK_COLORS[ink.i]) < 50) && ++n < 50);
+    do i = (Math.random() * INK_COLORS.length) | 0;
+    while ((ink.recent.includes(i) || hueGap(INK_COLORS[i], INK_COLORS[ink.i]) < 45) && ++n < 80);
     ink.i = i;
+    ink.recent = ink.recent.concat(i).slice(-3);
   }
   // 虹の帯の向きも毎回変える(囲むたびに違う模様のパッチワークになる)
   ink.ang = rand(0, Math.PI);
@@ -1918,12 +1921,11 @@ function inkHex() {
   if (starT > 0) return INK_ALL[GOLD_INK];
   return INK_COLORS[ink.i];
 }
-// 描いている線の色(速い線は少し淡く)
+// 描いている線の色。INK ではローラー・線・塗る色はいつも同じ(速い線も色は変えない)
 function trailHex(fast) {
   const t = theme();
   if (!inkMode() && !inkRainbow()) return fast ? t.trailF : t.trailS;
-  const h = inkHex();
-  return fast ? hexOf(mixRgb(rgbOf(h), [255, 255, 255], 0.35)) : h;
+  return inkHex();
 }
 // 塗るときの色番号。-1 は「セルごとに虹」
 function inkNo(themeNo) {
@@ -1948,7 +1950,7 @@ function palHex(a) {
 
 /* ---------------- テーマ適用 ---------------- */
 const LV = 6;       // 立体面の陰影段階数
-const NCOL = 24 + 2 * (17 + 12);   // 立体面の色の種類(下の bases の数。インク17色+虹12色、その暗い版)
+const NCOL = 24 + 2 * (12 + 12);   // 立体面の色の種類(下の bases の数。インク17色+虹12色、その暗い版)
 const FLASH_CI = 23; // 塗りの波の光
 let animHue = 0, animAcc = 0, animRedraw = 0; // 動くテーマ用の経過時間
 function themePalette(t) {
@@ -1993,9 +1995,9 @@ function buildColors() {
            INK_ALL.concat(RB_COLORS).map(c => mixRgb([0,0,0], rgbOf(c), 0.88)));
   col3D = [];
   bases.forEach((b, ci) => {
-    const bright = ci >= 3 && ci <= 5;
+    const bright = ci >= 3 && ci <= 5, inkc = ci >= 24;
     for (let l = 0; l < LV; l++)
-      col3D.push(rgbStr(b, bright ? 0.66 + 0.38 * l / (LV - 1) : 0.46 + 0.80 * l / (LV - 1)));
+      col3D.push(rgbStr(b, bright ? 0.66 + 0.38 * l / (LV - 1) : inkc ? 0.74 + 0.36 * l / (LV - 1) : 0.46 + 0.80 * l / (LV - 1)));
   });
 }
 function applyCrt() {
@@ -4692,7 +4694,7 @@ function render3D(t) {
       if (ca > now) ci = par[c];                    // 塗りの波がまだ届いていない
       else {
         const a = colA[c];
-        ci = a === 0 ? 3 : a === HOME_COL ? 6 : a >= INK_BASE ? 24 + a - INK_BASE + (ringA[c] ? 29 : 0) : 6 + a + (ringA[c] ? 8 : 0);
+        ci = a === 0 ? 3 : a === HOME_COL ? 6 : a >= INK_BASE ? 24 + a - INK_BASE + (ringA[c] ? INK_ALL.length + RB_N : 0) : 6 + a + (ringA[c] ? 8 : 0);
       }
     }
     let lit = nx * lx + ny * ly + nz * lz;

@@ -1223,6 +1223,22 @@ buddiesOn = true;
   for (let i = 0; i < 40; i++) { nextInk(); seen.add(ink.i); }
   assert('MIX: いろいろな色になる', seen.size >= 8, seen.size);
   const a = ink.i; nextInk(); assert('続けて同じ色にならない', ink.i !== a);
+  let ok = true;
+  for (let i = 0; i < 200; i++) { const pr = ink.recent.slice(); const p0 = ink.i; nextInk(); if (pr.includes(ink.i) || hueGap(INK_COLORS[ink.i], INK_COLORS[p0]) < 45) ok = false; }
+  assert('直前3色は使わず、色相も離れる', ok);
+  // ローラー・描きかけの線・塗った陣地は同じ色(速い線でも)
+  held.fast = false;
+  let m = steps(0, -1, 3); player.usedFast = true;
+  assert('ローラー=線=塗る色(速い線も)', trailHex(true) === inkHex() && trailHex(false) === inkHex() && palHex(inkNo(1)) === inkHex());
+  const want = INK_BASE + ink.i;
+  // 本当に線を閉じて、塗られた色がローラーの色と同じか
+  settings.mode = 'PLANE'; startGame(); setState('play'); qixes = qixes.slice(0, 1); items = [];
+  qixes[0].x = GW / 2; qixes[0].y = GH / 2; sparxes = []; seekers = [];
+  const rollerCol = inkHex();
+  held.fast = false; steps(0, -1, 6); steps(1, 0, 6); steps(0, 1, 6);
+  const got = new Set(); for (let c = 0; c < surf.N; c++) if (grid[c] === WALL && colA[c] >= INK_BASE) got.add(palHex(colA[c]));
+  assert('囲んだ陣地はローラーと同じ色', got.size === 1 && got.has(rollerCol), [...got].join() + ' / ' + rollerCol);
+  assert('次の線は別の色になる', inkHex() !== rollerCol);
   assert('塗る色番号 = いまのインク', inkNo(1) === INK_BASE + ink.i && palHex(inkNo(1)) === INK_COLORS[ink.i]);
   assert('ローラーの色 = いまのインク', inkHex() === INK_COLORS[ink.i]);
   starT = 5; assert('STAR中は金のインク', palHex(inkNo(1)) === '#ffcc33'); starT = 0;
