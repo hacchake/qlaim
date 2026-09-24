@@ -867,7 +867,10 @@ const Snd = (() => {
     get ac() { return ac; },
     claim(cells, slow) {
       const n = 3 + Math.min(4, Math.floor(cells / 400));
-      const base = slow ? 392 : 330;
+      // BGMが鳴っていれば、いまのベース音を基準にする(曲とハモる)。低すぎれば上げる
+      let base = Bgm.root();
+      if (base) { while (base < 300) base *= 2; if (!slow) base *= 0.75; }
+      else base = slow ? 392 : 330;
       for (let i = 0; i < n; i++)
         tone(base * Math.pow(2, SCALE[i] / 12), 0, 0.1, 'square', 0.11, i * 0.055);
     },
@@ -913,6 +916,7 @@ const Bgm = (() => {
   }
   function bpmNow(inten) { return song.bpm * (inten >= 3 ? 1.07 : 1); }
 
+  let rootHz = 0;                        // いま鳴っているベース音(効果音をハモらせる)
   function scheduleStep(st, t, inten, stepDur) {
     const sec = section();
     inten = clamp(inten + (sec.boost || 0), 0, 3);
@@ -930,6 +934,7 @@ const Bgm = (() => {
         if (!nm) continue;
         const up = (tr.oj && Math.random() < tr.oj) || (tr.l > 0 && Math.random() < vary);
         const f = hz(nm) * tp * (up ? 2 : 1);
+        if (i === 0 && tr.l === 0) rootHz = hz(nm) * tp;       // 先頭トラック(ベース)の音を覚えておく
         const dur = Math.max(0.03, stepDur * tr.g);
         Snd.note(f, t, dur, tr.w, tr.v, tr.a, tr.r, tr.det);
         for (let e = 1; e <= (tr.echo || 0); e++)            // やまびこ
@@ -975,7 +980,7 @@ const Bgm = (() => {
         if (tr.p && !tr.set) tr.set = new Set(tr.p);
         if (tr.p2 && !tr.set2) tr.set2 = new Set(tr.p2);
       }
-      step = 0; formIdx = 0; formRep = 0;
+      step = 0; formIdx = 0; formRep = 0; rootHz = 0;
       nextT = Snd.ac.currentTime + 0.08;
       startTimer();
       tick();
@@ -991,6 +996,7 @@ const Bgm = (() => {
     get playing() { return name; },
     // テスト・表示用: いまのセクション番号と、曲を n 周ぶん進めた場合の番号
     get section() { return formIdx; },
+    root() { return song ? rootHz : 0; },
     // 画面の脈動: 直前のキックからの経過で 1→0
     pulse() {
       if (!Snd.ac || !kickTimes.length) return 0;
@@ -2514,7 +2520,22 @@ function spawnParticles(px, py, n, col) {
     particles.push({ x: px, y: py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: rand(0.3, 0.9), col });
   }
 }
+// クリア中は花火を打ち上げる
+let fwT = 0;
+function updateFireworks(dt) {
+  if (state !== 'clear') return;
+  fwT -= dt;
+  if (fwT > 0) return;
+  fwT = rand(0.18, 0.4);
+  const x = rand(80, W - 80), y = rand(FIELD_Y + 60, H * 0.55), col = hslHex(rand(0, 360), 90, 65);
+  for (let i = 0; i < 34; i++) {
+    const a = i / 34 * Math.PI * 2, sp = rand(70, 150);
+    particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: rand(0.7, 1.2), col });
+  }
+  Snd.fuseCr();
+}
 function updateParticles(dt) {
+  updateFireworks(dt);
   for (const r of rings) r.t += dt;
   rings = rings.filter(r => r.t < 1.0);
   for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 50 * dt; p.t -= dt; }

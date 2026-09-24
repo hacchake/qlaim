@@ -818,5 +818,16 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('タイトルのデモは普通の距離', cam.D < 9);
 }
 
+
+// ---- 57) 花火・ハモる効果音 ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  claimed = Math.ceil(initOpen * 0.8); startClear(false);
+  const n0 = particles.length;
+  for (let i = 0; i < 30; i++) updateParticles(1/30);
+  assert('クリア中は花火が上がる', particles.length > n0 + 20);
+  assert('BGMが無いときの基準音は0(従来の音程)', Bgm.root() === 0);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
