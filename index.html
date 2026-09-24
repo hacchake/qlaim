@@ -187,14 +187,14 @@ const CONFIG = {
     TRUNC_ICOSA: s3({ label:'切頂20面体',   sub:'切頂正多面体 = サッカーボール', shape:'truncIcosa', music:'chip' }),
     CUBOCTA:     s3({ label:'立方八面体',   sub:'準正多面体',         shape:'cubocta',     music:'ambient' }),
     ICOSIDODECA: s3({ label:'20・12面体',   sub:'準正多面体',         shape:'icosidodeca', music:'ambient' }),
-    RHOMBICUBOCTA: s3({ label:'斜方立方八面体', sub:'準正多面体',     shape:'rhombicubocta', music:'chip' }),
-    TRUNC_OCTA:  s3({ label:'切頂八面体',   sub:'切頂正多面体',       shape:'truncOcta',   music:'orbit' }),
+    RHOMBICUBOCTA: s3({ label:'斜方立方八面体', sub:'準正多面体',     shape:'rhombicubocta', music:'synth' }),
+    TRUNC_OCTA:  s3({ label:'切頂八面体',   sub:'切頂正多面体',       shape:'truncOcta',   music:'synth' }),
     TRUNC_DODECA: s3({ label:'切頂12面体',  sub:'切頂正多面体',       shape:'truncDodeca', music:'ambient' }),
     STELLA:      s3({ label:'星型八面体',   sub:'星型 (ケプラーの星)', shape:'stella',     music:'idm', target:65 }),
     SSD:         s3({ label:'小星型12面体', sub:'星型正多面体',       shape:'ssd',         music:'idm', target:65 }),
     GSD:         s3({ label:'大星型12面体', sub:'星型正多面体',       shape:'gsd',         music:'drone', target:65 }),
-    TORUS:       s3({ label:'ドーナツ',     sub:'トーラス',           shape:'torus',       music:'ambient', home:4 }),
-    MOBIUS:      s3({ label:'メビウスの帯', sub:'縁が1本だけのねじれた帯', shape:'mobius', music:'ambient' }),
+    TORUS:       s3({ label:'ドーナツ',     sub:'トーラス',           shape:'torus',       music:'lofi', home:4 }),
+    MOBIUS:      s3({ label:'メビウスの帯', sub:'縁が1本だけのねじれた帯', shape:'mobius', music:'lofi' }),
     KNOT:        s3({ label:'三葉結び目',   sub:'結び目の形の管',     shape:'trefoil',     music:'idm', home:4 }),
     KLEIN:       s3({ label:'クラインの壺', sub:'表と裏のない曲面',   shape:'klein',       music:'drone', target:65, home:4 }),
   },
@@ -259,8 +259,9 @@ function modeSub(m) {
 }
 
 /* ---- BGMの選び方(OPTIONS)。AUTO は盤面ごとの music ---- */
-const MUSIC_KEYS = ['AUTO', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM'];
-const MUSIC_SONG = { CLASSIC:'play', ORBIT:'orbit', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm' };
+const MUSIC_KEYS = ['AUTO', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM', 'SYNTH', 'LOFI'];
+const MUSIC_SONG = { CLASSIC:'play', ORBIT:'orbit', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm',
+                     SYNTH:'synth', LOFI:'lofi' };
 
 /* ---- 配色テーマ ----
    line: 境界線 / fast: FAST占領色4種 / slow: SLOW占領色4種
@@ -322,6 +323,8 @@ const THEMES = [
    drone   … ドローン            D の持続音に A → A# がにじむ
    ambient … アンビエント        Fmaj7 → C/E → Dm9 → B♭maj7
    idm     … IDM(変拍子っぽい崩し) F#m → D → A → E
+   synth   … シンセウェイブ      Am → F → C → G(4つ打ち)
+   lofi    … ローファイ          Dm7 → G7 → Cmaj7 → Am7(swing: 裏拍を後ろにずらしてハネさせる)
 -------------------------------------------------------------------- */
 function at(len, notes) { const a = new Array(len).fill(null); for (const k in notes) a[k] = notes[k]; return a; }
 const BGMDATA = {
@@ -387,6 +390,34 @@ const BGMDATA = {
     { t:'hat',   v:0.10, l:0, p:[4,12,20,28,36,44,52,60] },
     { t:'hat',   v:0.06, l:3, p:[2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62] },
     { t:'snare', v:0.28, l:1, p:[8,24,40,56] },
+  ]},
+  synth: { bpm: 108, len: 64,
+    // イントロ(ドラムなし) → A → B(別メロ) → ブレイク → サビ → 半音上でもう一度
+    form: [ { n:1, drums:false, mute:[5] }, { n:1 }, { n:1, alt:true }, { n:1, mute:[0,1], drums:false, boost:2 }, { n:1, boost:1 }, { n:1, t:1, boost:1, alt:true } ],
+    tracks: [
+    { t:'n', w:'sawtooth', v:0.050, g:0.6, det:6, l:0, s:['A1',null,'A1',null,'A2',null,'A1',null,'A1',null,'A1',null,'A2',null,'A1','A2','F1',null,'F1',null,'F2',null,'F1',null,'F1',null,'F1',null,'F2',null,'F1','F2','C2',null,'C2',null,'C3',null,'C2',null,'C2',null,'C2',null,'C3',null,'C2','C3','G1',null,'G1',null,'G2',null,'G1',null,'G1',null,'G1',null,'G2',null,'G1','G2'] },
+    { t:'n', w:'square',   v:0.032, g:0.4, l:0, s:['A4','C5','E5','A5','E5','C5','A4','C5','E5','A5','E5','C5','A4','C5','E5','A5','F4','A4','C5','F5','C5','A4','F4','A4','C5','F5','C5','A4','F4','A4','C5','F5','C5','E5','G5','C6','G5','E5','C5','E5','G5','C6','G5','E5','C5','E5','G5','C6','G4','B4','D5','G5','D5','B4','G4','B4','D5','G5','D5','B4','G4','B4','D5','G5'] },
+    { t:'n', w:'triangle', v:0.026, g:15, a:0.5, r:1.2, det:10, l:0, s:at(64, { 0:'A3', 16:'F3', 32:'C4', 48:'G3' }) },
+    { t:'n', w:'triangle', v:0.026, g:15, a:0.5, r:1.2, det:10, l:0, s:at(64, { 0:'C4', 16:'A3', 32:'E4', 48:'B3' }) },
+    { t:'n', w:'triangle', v:0.024, g:15, a:0.5, r:1.2, det:10, l:0, s:at(64, { 0:'E4', 16:'C4', 32:'G4', 48:'D4' }) },
+    { t:'n', w:'sawtooth', v:0.040, g:1.8, det:5, echo:1, ed:3, l:1, s:['E5',null,null,null,'A5',null,'G5','E5',null,null,'D5',null,'C5',null,null,null,'C5',null,null,null,'F5',null,'E5','C5',null,null,'A4',null,'C5',null,null,null,'G5',null,null,null,'E5',null,'C5','E5',null,null,'G5',null,'C6',null,null,null,'B5',null,null,null,'G5',null,'D5',null,'B4',null,'D5',null,'G5',null,'A5',null], s2:['A5',null,'G5',null,'E5',null,'C5',null,'D5',null,'E5',null,null,null,'A4',null,'F5',null,'E5',null,'C5',null,'A4',null,'C5',null,'F5',null,null,null,'E5',null,'E5',null,'G5',null,'C6',null,'B5',null,'G5',null,'E5',null,null,null,'C5',null,'D5',null,'G5',null,'B5',null,'D6',null,'B5',null,'G5',null,'D5',null,'B4',null] },
+    { t:'kick',  v:0.50, l:0, p:[0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60] },
+    { t:'hat',   v:0.07, l:0, p:[2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62] },
+    { t:'snare', v:0.26, l:1, p:[4,12,20,28,36,44,52,60] },
+    { t:'hat',   v:0.035,l:3, p:[1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59,61,63] },
+  ]},
+  lofi: { bpm: 78, len: 64, swing: 0.2,
+    form: [ { n:1, mute:[5] }, { n:1 }, { n:1, alt:true }, { n:1, drums:false }, { n:1, alt:true, boost:1 } ],
+    tracks: [
+    { t:'n', w:'triangle', v:0.040, g:3, a:0.01, r:0.6, det:4, l:0, s:at(64, { 0:'F3', 6:'F3', 16:'F3', 22:'F3', 32:'E3', 38:'E3', 48:'E3', 54:'E3' }) },
+    { t:'n', w:'triangle', v:0.040, g:3, a:0.01, r:0.6, det:4, l:0, s:at(64, { 0:'A3', 6:'A3', 16:'B3', 22:'B3', 32:'G3', 38:'G3', 48:'G3', 54:'G3' }) },
+    { t:'n', w:'triangle', v:0.036, g:3, a:0.01, r:0.6, det:4, l:0, s:at(64, { 0:'C4', 6:'C4', 16:'D4', 22:'D4', 32:'B3', 38:'B3', 48:'C4', 54:'C4' }) },
+    { t:'n', w:'sine',     v:0.080, g:5, a:0.02, r:0.4, l:0, s:at(64, { 0:'D2', 10:'A1', 16:'G1', 26:'D2', 32:'C2', 42:'G1', 48:'A1', 58:'E2' }) },
+    { t:'n', w:'sine',     v:0.030, g:1, r:0.8, echo:2, ed:3, pr:0.6, l:2, s:at(64, { 3:'D6', 19:'F6', 35:'E6', 51:'C6' }) },
+    { t:'n', w:'sine',     v:0.050, g:2, r:0.5, echo:1, ed:3, l:1, s:['A4',null,null,'C5',null,null,'F5',null,'E5',null,null,null,'D5',null,null,null,'B4',null,null,'D5',null,null,'F5',null,'E5',null,'D5',null,null,null,null,null,'E5',null,null,'G5',null,null,'B5',null,'A5',null,null,null,'G5',null,null,null,'C5',null,null,'E5',null,null,'G5',null,'E5',null,'C5',null,'A4',null,null,null], s2:[null,null,'F5',null,'E5',null,'D5',null,'C5',null,null,null,null,null,'A4',null,null,null,'B4',null,'D5',null,'F5',null,'A5',null,'G5',null,null,null,null,null,null,null,'G5',null,'E5',null,'D5',null,'B4',null,'C5',null,null,null,null,null,null,null,'A4',null,'C5',null,'E5',null,'G5',null,'E5',null,'D5',null,null,null] },
+    { t:'kick',  v:0.45, l:0, p:[0,7,10,16,23,26,32,39,42,48,55,58] },
+    { t:'snare', v:0.20, l:0, p:[8,24,40,56] },
+    { t:'hat',   v:0.040,l:0, pr:0.85, p:[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62] },
   ]},
   chip: { bpm: 150, len: 32,
     form: [ { n:2 }, { n:2, alt:true }, { n:1, mute:[1], drums:false, boost:1 }, { n:2, boost:1 }, { n:2, t:2, boost:1, alt:true } ],
@@ -902,7 +933,8 @@ const Bgm = (() => {
     while (nextT < ahead) {
       const inten = intensity();
       const sd = 60 / bpmNow(inten) / 4; // 16分音符の長さ
-      scheduleStep(step, nextT, inten, sd);
+      // スウィング: 裏の16分を少し後ろへ
+      scheduleStep(step, nextT + (song.swing && (step & 1) ? song.swing * sd : 0), inten, sd);
       nextT += sd;
       step = (step + 1) % song.len;
       if (step === 0) advance();

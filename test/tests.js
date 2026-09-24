@@ -692,5 +692,12 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   settings.glow = true;
 }
 
+
+// ---- 47) 追加曲(シンセウェイブ・ローファイ) ----
+{
+  assert('SYNTH/LOFI が選べて盤面にも割り当て', BGMDATA.synth && BGMDATA.lofi && MUSIC_KEYS.includes('LOFI')
+    && CONFIG.SURF.MOBIUS.music === 'lofi' && BGMDATA.lofi.swing > 0);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
