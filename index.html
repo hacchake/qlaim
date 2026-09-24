@@ -148,6 +148,7 @@ const CONFIG = {
 
   FUSE_DELAY: 0.5,      // 停止→導火線点火までの猶予(秒)
   FUSE_SPEED: 34,       // 導火線の速度(セル/秒)
+  FUSE_MIN: 10,         // 線がこのマス数より短い間は点火しない(自機のすぐそばに火が出ないように。立体は半分)
 
   /* -- ゲーム進行 ---------------------------------------------- */
   LIVES: 3,             // 残機の既定値(OPTIONSで変更可)
@@ -3319,10 +3320,13 @@ function checkExtend() {
 /* ---------------- 導火線 ---------------- */
 function fuseReset() { fuse.wait = 0; fuse.pos = 0; fuse.lit = false; fuse.sndT = 0; fuse.said = false; }
 function effFuseDelay() { return CONFIG.FUSE_DELAY * diff().fuse; }
+function fuseMin() { return surf.is3D ? CONFIG.FUSE_MIN / 2 : CONFIG.FUSE_MIN; }
 
 function updateFuse(dt, stepped) {
   if (!player.drawing || trail.length === 0 || isZen()) return;
   if (stepped) { fuse.wait = 0; return; } // 動いている間は進まない(点火状態は維持)
+  // 線が短い = 書き始め(火が出る場所)が自機のすぐそば。そこでは点火しない
+  if (!fuse.lit && trail.length < fuseMin()) { fuse.wait = 0; return; }
   fuse.wait += dt;
   if (fuse.wait >= effFuseDelay()) {
     fuse.lit = true;

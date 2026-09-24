@@ -1188,5 +1188,18 @@ buddiesOn = true;
   assert('図鑑のカード(全18種)が描ける・操作できる', !err && state === 'dex' && dexSel === 17, err || state + dexSel);
 }
 
+
+// ---- 83) 短い線では導火線に火がつかない(自機のすぐそばに火が出ない) ----
+{
+  settings.mode = 'PLANE'; startGame(); setState('play'); qixes = []; sparxList = []; seekers = []; buddies = [];
+  fuseReset(); player.drawing = true; trail = [0, 1, 2];
+  for (let i = 0; i < 120; i++) updateFuse(1 / 60, false);
+  assert('3マスの線では点火しない', !fuse.lit);
+  trail = Array.from({ length: CONFIG.FUSE_MIN + 2 }, (_, i) => i);
+  for (let i = 0; i < 60; i++) updateFuse(1 / 60, false);
+  assert('長い線なら点火する', fuse.lit);
+  fuseReset(); player.drawing = false; trail = [];
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
