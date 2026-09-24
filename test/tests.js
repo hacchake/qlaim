@@ -852,5 +852,23 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('ゲームオーバー画面(共有ボタン)の描画', !err && shareRect && shareRect.w > 0, err);
 }
 
+
+// ---- 60) QIXの突進 ----
+{
+  for (const md of ['PLANE', 'SPHERE', 'TORUS']) {
+    settings.mode = md; startGame(); level = 6; initLevel(6); setState('play'); player.invuln = 999;
+    const q = qixes[0];
+    q.dashCD = 0.5; updateQix(q, 0.1);
+    const warned = q.warn;
+    q.dashCD = 0.01; updateQix(q, 0.02);
+    assert(md + ': AREA6から予告して突進', warned && q.dash > 0, 'dash=' + q.dash);
+    for (let i = 0; i < 120; i++) updateQixes(1/60);
+    assert(md + ': 突進後もQIXは空き地', qixes.every(openAt));
+  }
+  settings.mode = 'PLANE'; startGame(); level = 5; initLevel(5); setState('play');
+  updateQix(qixes[0], 0.1);
+  assert('AREA5(BONUS)では突進しない', !(qixes[0].dash > 0) && qixes[0].dashCD == null);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

@@ -139,6 +139,8 @@ const CONFIG = {
   QIX_SPEED: 14,        // QIX基本速度
   QIX_ACCEL: 1.09,      // エリア毎のQIX速度倍率
   TWO_QIX_FROM: 3,      // このエリア以降 QIX 2体(分断で即クリア)
+  QIX_DASH_FROM: 6,     // このエリアから QIX がときどき自機へ突進する(直前に白く光って予告)
+  QIX_DASH_RATE: 2.3,   // 突進中の速さ(倍)
 
   SPARX_SPEED: 24,      // SPARX速度
   SPARX_INTERVAL: 25,   // 追加SPARXの出現間隔(秒)
@@ -1093,6 +1095,7 @@ function makePlaneSurface() {
     },
     qixCell(q) { return idx(clamp(Math.floor(q.x), 1, GW - 2), clamp(Math.floor(q.y), 1, GH - 2)); },
     qixTurn(q, a) { q.head += a; },
+    qixAim(q, c) { q.head = Math.atan2(((c / GW) | 0) + 0.5 - q.y, (c % GW) + 0.5 - q.x); },
     qixMove(q, dist) {
       while (dist > 0) { // 高速時のすり抜け防止のためサブステップ
         const step = Math.min(0.4, dist);
@@ -1330,6 +1333,10 @@ function makeRadialSurface(key) {
     },
     qixCell(q) { return cellAt(q.p[0], q.p[1], q.p[2]); },
     qixTurn(q, a) { q.h = rotAround(q.h, q.p, a); },
+    qixAim(q, c) {   // 目標の方向を接平面に落とした向き
+      const t = [dir[c * 3], dir[c * 3 + 1], dir[c * 3 + 2]], h = vadd(t, q.p, -vdot(t, q.p));
+      if (Math.hypot(h[0], h[1], h[2]) > 1e-6) q.h = vnorm(h);
+    },
     qixMove(q, dist) {
       let rem = dist * cellAng;
       const smax = 0.4 * cellAng;
@@ -1493,6 +1500,12 @@ function makeParamSurface(key) {
     },
     qixCell: q => cellAtP(q.x, q.y),
     qixTurn(q, a) { q.head += a; },
+    qixAim(q, c) {   // 近いほうへ回り込む(貼り合わせは無視した近似)
+      let dx = (c % NU) + 0.5 - q.x, dy = ((c / NU) | 0) + 0.5 - q.y;
+      if (dx > NU / 2) dx -= NU; else if (dx < -NU / 2) dx += NU;
+      if (!border) { if (dy > NV / 2) dy -= NV; else if (dy < -NV / 2) dy += NV; }
+      q.head = Math.atan2(dy, dx);
+    },
     qixMove(q, dist) {
       while (dist > 0) {
         const step = Math.min(0.4, dist);
@@ -2219,8 +2232,20 @@ function updateFuse(dt, stepped) {
 
 /* ---------------- QIX ---------------- */
 function updateQix(q, dt) {
-  surf.qixTurn(q, (Math.random() - 0.5) * 4 * dt);
-  surf.qixMove(q, q.spd * dt * enemySlow());
+  // 突進: 予告(warn)のあと自機へ向きを変えて速く進む
+  let rate = 1;
+  q.warn = false;
+  if (level >= CONFIG.QIX_DASH_FROM && state === 'play' && !isZen() && bonusT <= 0) {
+    if (q.dashCD == null) q.dashCD = rand(4, 7);
+    if (q.dash > 0) { q.dash -= dt; rate = CONFIG.QIX_DASH_RATE; }
+    else {
+      q.dashCD -= dt;
+      q.warn = q.dashCD < 0.7;
+      if (q.dashCD <= 0) { surf.qixAim(q, player.c); q.dash = 1.0; q.dashCD = rand(5, 8); }
+    }
+  }
+  if (!(q.dash > 0)) surf.qixTurn(q, (Math.random() - 0.5) * 4 * dt);
+  surf.qixMove(q, q.spd * dt * enemySlow() * rate);
   q.arm += 3.4 * dt;
   q.hue = (q.hue + 140 * dt) % 360;
   q.segT -= dt;
@@ -2996,7 +3021,7 @@ function render2D(t) {
       const s = q.segs[i];
       const al = (i + 1) / q.segs.length;
       const last = i === q.segs.length - 1;
-      ctx.strokeStyle = qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
+      ctx.strokeStyle = q.warn && Math.floor(blinkT * 16) & 1 ? '#ffffff' : qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
       ctx.lineWidth = last ? 3 : 2;
       if (last) { ctx.shadowColor = qixStroke(s.h, 60, 0.9); ctx.shadowBlur = 8; }
       ctx.beginPath();
@@ -3231,7 +3256,7 @@ function render3D(t) {
       const s = q.segs[i];
       const al = (i + 1) / q.segs.length;
       const last = i === q.segs.length - 1;
-      ctx.strokeStyle = qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
+      ctx.strokeStyle = q.warn && Math.floor(blinkT * 16) & 1 ? '#ffffff' : qixStroke(s.h, 45 + al * 25, 0.2 + 0.8 * al);
       ctx.lineWidth = last ? 3 : 2;
       if (last) { ctx.shadowColor = qixStroke(s.h, 60, 0.9); ctx.shadowBlur = 8; }
       // 表側(near)と、両面の形で向こう側に透けて見える部分(far)を分けて描く
