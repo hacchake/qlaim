@@ -1737,7 +1737,8 @@ function makeRadialSurface(key) {
     qixArm(q, a, L) {
       const d = vadd(vadd([0,0,0], q.h, Math.cos(a)), vcross(q.p, q.h), Math.sin(a));
       const pts = [];
-      for (let m = 0; m <= 12; m++) pts.push(vnorm(vadd(q.p, d, (m / 6 - 1) * L * cellAng)));
+      const M = Math.max(50, Math.ceil(L * 10));   // 約0.2マスおき(角をかすめてもすり抜けない)
+      for (let m = 0; m <= M; m++) pts.push(vnorm(vadd(q.p, d, (2 * m / M - 1) * L * cellAng)));
       return { pts };
     },
     segEach(sg, fn) {
@@ -1902,7 +1903,8 @@ function makeParamSurface(key) {
     },
     qixArm(q, a, L) {
       const pts = [];
-      for (let m = 0; m <= 12; m++) { const t = (m / 6 - 1) * L; pts.push(wrapXY(q.x + Math.cos(a) * t, q.y + Math.sin(a) * t)); }
+      const M = Math.max(50, Math.ceil(L * 10));   // 約0.2マスおき(角をかすめてもすり抜けない)
+      for (let m = 0; m <= M; m++) { const t = (2 * m / M - 1) * L; pts.push(wrapXY(q.x + Math.cos(a) * t, q.y + Math.sin(a) * t)); }
       return { pts };
     },
     segEach(sg, fn) {
@@ -3884,13 +3886,17 @@ function updateQix(q, dt) {
   // 当たり判定: 体(クラゲのかさ)が描きかけの線や描いている自機に触れてもミス
   if (!q.segs.length || state !== 'play') return;
   if (qixBodyHits(q)) { death('ヌメリンの体が線に当たった'); return; }
-  let close = false;
-  const hit = surf.segEach(q.segs[q.segs.length - 1], c => {
-    if (grid[c] === TRAIL || (player.drawing && c === player.c)) { death('ヌメリンの腕が線に当たった'); return true; }
-    // ニアミス: 描きかけの線のすぐ隣をかすめた
-    if (player.drawing && !close) for (let k = 0; k < 4; k++) { const n = surf.nb[c * 4 + k]; if (n >= 0 && grid[n] === TRAIL) { close = true; break; } }
-    return false;
-  });
+  let close = false, hit = false;
+  // 腕: いまの位置と、ひとつ前の位置(速く回る腕が線をすり抜けないように)
+  for (const sg of q.segs.slice(-2)) {
+    hit = surf.segEach(sg, c => {
+      if (grid[c] === TRAIL || (player.drawing && c === player.c)) { death('ヌメリンの腕が線に当たった'); return true; }
+      // ニアミス: 描きかけの線のすぐ隣をかすめた
+      if (player.drawing && !close) for (let k = 0; k < 4; k++) { const n = surf.nb[c * 4 + k]; if (n >= 0 && grid[n] === TRAIL) { close = true; break; } }
+      return false;
+    });
+    if (hit) return;
+  }
   if (!hit && close && nearMissT <= 0 && deathTimer <= 0) nearMiss();
 }
 // ニアミスボーナス(2秒に1回まで)
@@ -3912,7 +3918,14 @@ function nearMiss() {
 }
 // ヌメリンの体の範囲(中心からグラフで r 歩以内。見た目の体の大きさに合わせる)に線があるか
 function qixBodyHits(q) {
-  const r = surf.is3D ? 1 : 2, c0 = surf.qixCell(q);
+  const c0 = surf.qixCell(q);
+  // 体の大きさ(画面で約13px)を、その場所のマスの大きさで割った半径にする
+  let r = 2;
+  if (surf.is3D) {
+    const n = surf.nb[c0 * 4] >= 0 ? surf.nb[c0 * 4] : surf.nb[c0 * 4 + 1];
+    const a = surf.screenOf(c0), b = n >= 0 ? surf.screenOf(n) : a, px = Math.hypot(a.x - b.x, a.y - b.y);
+    r = px > 0.5 ? clamp(Math.round(12 / px), 1, 3) : 1;
+  }
   let cur = [c0];
   const seen = new Set(cur);
   for (let d = 0; d <= r; d++) {

@@ -1373,5 +1373,31 @@ buddiesOn = true;
   assert('OPTIONSに「塗る音」', OPT_ITEMS.some(it => it.k === 'claimSnd'));
 }
 
+
+// ---- 90) 立体でもヌメリンの腕が線をすり抜けない ----
+for (const mode of ['SPHERE', 'CUBE', 'TORUS', 'KLEIN']) {
+  settings.mode = mode; startGame(); setState('play');
+  const q = qixes[0], sg = surf.qixArm(q, 0.7, surf.def.arm);
+  // 腕の上を細かくたどったマスが、どれも segEach で調べられている
+  const P = sg.pts, cells = new Set();
+  for (let i = 0; i + 1 < P.length; i++) for (let s2 = 0; s2 < 2; s2++) {
+    const t2 = s2 / 2, a = P[i], b = P[i + 1];
+    const pt = a.map((v, j) => v + (b[j] - v) * t2);
+    if (Math.abs(b[0] - a[0]) > 1 || Math.abs(b[1] - a[1]) > 1) continue;   // 貼り合わせの継ぎ目はとばす
+    cells.add(surf.ptCell(pt));
+  }
+  const seen = new Set(); surf.segEach(sg, c => { seen.add(c); return false; });
+  const miss = [...cells].filter(c => !seen.has(c));
+  assert(mode + ': 腕の上のマスはすべて判定される', miss.length === 0, miss.length + '/' + cells.size);
+  // 腕の途中に1マスだけ線を置く → ミス
+  const mid = [...cells][Math.floor(cells.size * 0.3)];
+  if (grid[mid] === OPEN) {
+    player.invuln = 0; deathTimer = 0; q.segs = [sg]; grid[mid] = TRAIL; trail = [mid]; player.drawing = true;
+    let hit = false; surf.segEach(sg, c => { if (grid[c] === TRAIL) hit = true; return hit; });
+    assert(mode + ': 腕の途中の線に当たる', hit);
+    grid[mid] = OPEN; trail = []; player.drawing = false;
+  }
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
