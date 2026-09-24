@@ -3020,7 +3020,7 @@ function drawItems() {
   }
 }
 // 危険度: SPARX / SEEKER が画面上で自機にどれだけ近いか(0〜1)
-let danger = 0;
+let danger = 0, dangerSndT = 0;
 function calcDanger() {
   danger = 0;
   if (state !== 'play' || deathTimer > 0 || player.invuln > 0) return 0;
@@ -3032,6 +3032,9 @@ function calcDanger() {
   };
   for (const sp of sparxes) if (!(sp.wait > 0)) near(sp.c, true);
   if (player.drawing) for (const k of seekers) near(k.c, true);
+  // 近いほど速いテンポでチリチリ鳴らす
+  dangerSndT -= 1 / 60;
+  if (danger > 0.35 && dangerSndT <= 0) { Snd.fuseCr(); dangerSndT = 0.35 - danger * 0.25; }
   return danger;
 }
 // 危険なときは画面のふちが赤く脈打つ
