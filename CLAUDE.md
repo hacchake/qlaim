@@ -138,6 +138,14 @@ node test/run-tests.js
 - 塗りの模様: `pickPattern`(STAR=水玉 > COMBO=ストライプ/3以上チェック > SLOW=波 > 4.5秒以上じっくり=うずまき > 大きく取った=波紋 > グラデーション)。`applyPattern` がセルごとに 2色目 `col2A` と混ぜ具合 `mixA`(0..7、混ぜ率 m/10)を入れる。色は `cellHex`。立体は `mixCi` が混ぜ色の枠(`MIX_SLOTS`)をその場で作る
 - `settings.ink`: MIX / RAINBOW / 固定色(`INK_FIXED`)。ネット対戦を作るなら、ここを各プレイヤーの色にする
 
+## 球 = 地球の地図
+- SPHERE だけ `earthMode()`。塗ると `colFor` が地図の色(`EARTH_BASE + earthIdx(c)`)を返す。模様・虹・インク色は使わない
+- 地図は `EARTH_RLE`(Natural Earth 110m 陸地・湖、パブリックドメインを 180×90 に。種類 a..p + 長さの連長)。`EARTH_PAL` 16色(海の深さ5段・海氷・氷床・ツンドラ・森・草原・砂漠・山…)。地表の種類は緯度と地域の箱で決めた近似
+- `setupEarth` が HOME の中心を日本(北緯36・東経138)に回す回転 `earthRot` を作り、HOME も地図で塗る
+
+## 線の色(となりの陣地の色がにじむ)
+- 平面 `lineHex` / 立体 `lineCi`(0.3秒ごとにキャッシュ作り直し)。陣地のあいだの線は両側の色を市松に縫い合わせ、空き地に面した線(歩ける道)はとなりの色を明るくした色
+
 ## Clawd のセリフ
 - `sayLine(場面)` が `CLAWD_LINES[場面]` から選ぶ(直前と同じものは避ける)。約4%で `RARE_LINES`(★つき・金ぶち)
 - 時事ネタ: `dateLines(date)` が日付・季節・曜日・時間のセリフを返す(start/idle/clear で約18%)。オフラインなので本物のニュースは取れない。流行りの話題は `TOPICAL_LINES` に書き足す
@@ -148,6 +156,12 @@ node test/run-tests.js
 - `Snd.note(..., x)` の x: flt(フィルター開閉)/ vib(ビブラート)/ pn(左右)/ rv(リバーブ)。省略時はシーケンサが決める
 - 打楽器: kick / snare / hat / ohat / clap / tom / blip / crash。セクション頭にクラッシュ、変わり目はタムのフィル
 - 平面の曲は splash(ファンク)
+
+## 音の仕組み(v7 追加)
+- メロディは `padBus` を通り、キックのたびに `Snd.duck`(曲ごとに `pump`)で一瞬引っこむ。上のレイヤーの短い音はピンポンディレイ(`dlIn`、テンポの付点8分)へ少し送る(`x.dl`)
+- 描画中の音は2本のオシレーター+ローパス。長さに応じて曲の根音から五音音階で上がる
+- `Snd.claim(cells, slow, pat)`: びちゃっ(`splat`)+和音+模様ごとの飾り(水玉=鐘、ストライプ=刻み、うずまき=上昇、地球=鐘の和音)。`Snd.item(k)` もアイテムごとに違う
+- 曲 earth(アース、球): D-Bm-G-A、パッド・アルペジオ(`arp`)・ゆったりドラム
 
 ## 設計上の約束
 - 占領率の整合: `claimed === initOpen - 空きセル数` を常に保つ(軌跡セルも占領に計上)。

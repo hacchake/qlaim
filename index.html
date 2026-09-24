@@ -194,7 +194,7 @@ const CONFIG = {
     PLANE:       { label:'平面', sub:'インクのステージ', target:75, speed:1.00, qixSpeed:1.00, arm:11, pts:1,
                    sparx:1.00, sparxStart:2, sparxWait:0, music:'splash' },
     CUBE:        s3({ label:'立方体',       sub:'正多面体',           shape:'cube',        music:'chip' }),
-    SPHERE:      s3({ label:'球',           sub:'なめらかな曲面',     shape:'sphere',      music:'orbit' }),
+    SPHERE:      s3({ label:'球',           sub:'地球の地図があらわれる', shape:'sphere',   music:'earth' }),
     TETRA:       s3({ label:'正四面体',     sub:'正多面体',           shape:'tetra',       music:'chip', target:68 }),
     OCTA:        s3({ label:'正八面体',     sub:'正多面体',           shape:'octa',        music:'ambient' }),
     DODECA:      s3({ label:'正12面体',     sub:'正多面体',           shape:'dodeca',      music:'ambient' }),
@@ -253,7 +253,7 @@ function pickItemKind() {
 const SURF_INFO = {
   PLANE:'すべての始まり。長方形のフィールド',
   CUBE:'6つの正方形。サイコロの形',
-  SPHERE:'角も果てもない。どこまでも続く面',
+  SPHERE:'地球。囲むと地図があらわれる。スタートは日本',
   TETRA:'4つの正三角形。いちばん面の少ない立体',
   OCTA:'8つの正三角形。ピラミッドを2つ合わせた形',
   DODECA:'12の正五角形。古代ギリシャでは宇宙の形とされた',
@@ -310,11 +310,11 @@ function modeSub(m) {
 }
 
 /* ---- BGMの選び方(OPTIONS)。AUTO は盤面ごとの music ---- */
-const MUSIC_KEYS = ['AUTO', 'SPLASH', 'CLASSIC', 'ORBIT', 'CHIP', 'DRONE', 'AMBIENT', 'IDM', 'SYNTH', 'LOFI'];
+const MUSIC_KEYS = ['AUTO', 'SPLASH', 'CLASSIC', 'ORBIT', 'EARTH', 'CHIP', 'DRONE', 'AMBIENT', 'IDM', 'SYNTH', 'LOFI'];
 // 曲の表示名(READY 画面の「♪」)
 const SONG_LABEL = { splash:'スプラッシュ(ファンク)', play:'クラシック', orbit:'宇宙', chip:'チップチューン', drone:'ドローン', ambient:'アンビエント',
-                     idm:'IDM', synth:'シンセウェイブ', lofi:'ローファイ', title:'タイトル' };
-const MUSIC_SONG = { SPLASH:'splash', CLASSIC:'play', ORBIT:'orbit', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm',
+                     idm:'IDM', synth:'シンセウェイブ', lofi:'ローファイ', title:'タイトル', earth:'アース' };
+const MUSIC_SONG = { SPLASH:'splash', CLASSIC:'play', ORBIT:'orbit', EARTH:'earth', CHIP:'chip', DRONE:'drone', AMBIENT:'ambient', IDM:'idm',
                      SYNTH:'synth', LOFI:'lofi' };
 
 /* ---- 配色テーマ ----
@@ -391,6 +391,11 @@ const THEMES = [
      pn: 左右(-1〜1), rv: リバーブ量(省略時は長い音ほど深め)。打楽器 ohat / clap / tom(f:高さHz)
 -------------------------------------------------------------------- */
 function at(len, notes) { const a = new Array(len).fill(null); for (const k in notes) a[k] = notes[k]; return a; }
+// アルペジオ: 和音ごとに16ステップ、8分音符で上がって下がる
+function arp(chords, pat) {
+  pat = pat || [0, null, 1, null, 2, null, 3, null, 2, null, 1, null, 3, null, 2, null];
+  return chords.flatMap(ch => pat.map(k => k == null ? null : ch[k]));
+}
 const BGMDATA = {
   title: { bpm: 92, len: 16, fixed: 1,
     // Am → F を4回、別の分散和音で2回、全音下(Gm → E♭)で2回、ドラムなしで静かに2回
@@ -454,6 +459,35 @@ const BGMDATA = {
     { t:'hat',   v:0.10, l:0, p:[4,12,20,28,36,44,52,60] },
     { t:'hat',   v:0.06, l:3, p:[2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62] },
     { t:'snare', v:0.28, l:1, p:[8,24,40,56] },
+  ]},
+  // アース: 球(地球)の曲。あたたかいパッド・アルペジオ・ゆったりしたドラム。D → Bm → G → A
+  earth: { bpm: 96, len: 64, pump: 0.22,
+    form: [ { n:1, drums:false, mute:[5] }, { n:1 }, { n:1, alt:true }, { n:1, mute:[0], drums:false, boost:2 }, { n:1, boost:1, alt:true }, { n:1, t:2, boost:1 } ],
+    tracks: [
+    { t:'n', w:'triangle', v:0.12, g:1.6, l:0, flt:[900,260,3], s:[
+      'D2',null,null,null,'D2',null,'A1',null,'D2',null,null,null,'F#2',null,'A2',null,
+      'B1',null,null,null,'B1',null,'F#1',null,'B1',null,null,null,'D2',null,'F#2',null,
+      'G1',null,null,null,'G1',null,'D2',null,'G1',null,null,null,'B1',null,'D2',null,
+      'A1',null,null,null,'A1',null,'E2',null,'A1',null,null,null,'C#2',null,'E2',null] },
+    { t:'n', w:'sine', v:0.030, g:15, a:0.6, r:1.4, det:9, l:0, s:at(64, { 0:'F#4', 16:'F#4', 32:'G4', 48:'A4' }) },
+    { t:'n', w:'sine', v:0.030, g:15, a:0.6, r:1.4, det:9, l:0, s:at(64, { 0:'A4', 16:'B4', 32:'B4', 48:'C#5' }) },
+    { t:'n', w:'triangle', v:0.022, g:15, a:0.6, r:1.4, det:12, l:0, s:at(64, { 0:'D5', 16:'D5', 32:'D5', 48:'E5' }) },
+    { t:'n', w:'triangle', v:0.040, g:0.6, l:0, echo:1, ed:3, rv:0.3, s:arp([['D4','F#4','A4','D5'],['B3','D4','F#4','B4'],['G3','B3','D4','G4'],['A3','C#4','E4','A4']]) },
+    { t:'n', w:'sine', v:0.085, g:2.6, l:1, vib:[5, 14], rv:0.35, dl:0.25, s:[
+      'F#5',null,null,null,'A5',null,'F#5',null,'E5',null,'D5',null,'E5',null,null,null,
+      'D5',null,null,null,'F#5',null,'B5',null,'A5',null,'F#5',null,'D5',null,null,null,
+      'B4',null,'D5',null,'G5',null,null,null,'F#5',null,'E5',null,'D5',null,'B4',null,
+      'C#5',null,null,null,'E5',null,'A5',null,'G5',null,'F#5',null,'E5',null,null,null], s2:[
+      'A5',null,'B5',null,'A5',null,'F#5',null,'D6',null,null,null,'C#6',null,'A5',null,
+      'B5',null,null,null,'A5',null,'F#5',null,'D5',null,'F#5',null,'A5',null,null,null,
+      'G5',null,'B5',null,'D6',null,null,null,'B5',null,'A5',null,'G5',null,'D5',null,
+      'E5',null,'A5',null,'C#6',null,null,null,'B5',null,'A5',null,'E5',null,null,null] },
+    { t:'n', w:'square', v:0.018, g:0.3, l:2, s:arp([['D6','A5','F#6','A5'],['B5','F#5','D6','F#5'],['G5','D5','B5','D5'],['A5','E5','C#6','E5']],
+      [0, 1, null, 2, null, 1, 3, null, 0, null, 2, 1, null, 3, null, 1]) },
+    { t:'kick',  v:0.42, l:1, p:[0,10,16,26,32,42,48,58] },
+    { t:'hat',   v:0.05, l:1, p:[2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62] },
+    { t:'clap',  v:0.16, l:2, p:[8,24,40,56] },
+    { t:'ohat',  v:0.05, l:3, p:[4,12,20,28,36,44,52,60] },
   ]},
   synth: { bpm: 108, len: 64,
     // イントロ(ドラムなし) → A → B(別メロ) → ブレイク → サビ → 半音上でもう一度
@@ -802,6 +836,29 @@ const Snd = (() => {
   let hum = null, muted = false, hatBuf = null;
   let bgmF = null, sfxP = null;   // BGMのこもり(ローパス) / 効果音の左右
   let comp = null, revVol = null, ohBuf = null, crBuf = null;   // まとめ役 / リバーブの入口 / 長いノイズ
+  let padBus = null, dlIn = null, dlL = null, dlR = null;        // メロディのバス / ピンポンディレイ
+  function setTempo(bpm) { if (dlL) { const d = 60 / bpm * 0.75; dlL.delayTime.value = d; dlR.delayTime.value = d; } }
+  // キックに合わせてメロディを引っこめる
+  function duck(t, amt) {
+    if (!padBus) return;
+    padBus.gain.setValueAtTime(1 - amt, t);
+    padBus.gain.linearRampToValueAtTime(1, t + 0.18);
+  }
+  // 塗りのびちゃっ(ローパスを閉じていくノイズ)
+  function splat(vol, delay) {
+    if (!ac || !crBuf) return;
+    const t = ac.currentTime + (delay || 0);
+    const s = ac.createBufferSource(); s.buffer = crBuf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 4;
+    f.frequency.setValueAtTime(3200, t); f.frequency.exponentialRampToValueAtTime(220, t + 0.28);
+    const g = ac.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    s.connect(f); f.connect(g); g.connect(sfxG); s.start(t); s.stop(t + 0.35);
+  }
+  // 鐘(サイン波の倍音を重ねる)
+  function bell(f, vol, delay) {
+    if (!ac) return;
+    [[1, 1], [2.76, 0.45], [5.4, 0.22], [8.93, 0.1]].forEach(([k, a]) => tone(f * k, f * k, 0.9 / Math.sqrt(k), 'sine', vol * a, delay));
+  }
 
   function ensure() {
     if (!ac) {
@@ -820,6 +877,16 @@ const Snd = (() => {
       bgmF = ac.createBiquadFilter(); bgmF.type = 'lowpass'; bgmF.frequency.value = 18000; bgmF.Q.value = 0.8;
       bgmF.connect(comp);
       bgmG = ac.createGain(); bgmG.connect(bgmF);
+      // メロディ用のバス: キックのたびに一瞬音量が下がる(ダンスミュージックの「ポンプ」)
+      padBus = ac.createGain(); padBus.connect(bgmG);
+      // ピンポンディレイ: 左右に跳ねるやまびこ(テンポに合わせる)
+      dlIn = ac.createGain(); dlIn.gain.value = 1;
+      dlL = ac.createDelay(2); dlR = ac.createDelay(2);
+      const fb1 = ac.createGain(), fb2 = ac.createGain(), mg = ac.createChannelMerger(2), dlF = ac.createBiquadFilter();
+      fb1.gain.value = 0.42; fb2.gain.value = 0.42; dlF.type = 'lowpass'; dlF.frequency.value = 3200;
+      dlIn.connect(dlL); dlL.connect(mg, 0, 0); dlL.connect(fb1); fb1.connect(dlR); dlR.connect(mg, 0, 1); dlR.connect(fb2); fb2.connect(dlL);
+      mg.connect(dlF); dlF.connect(bgmG);
+      setTempo(120);
       // リバーブ: ノイズを減衰させた残響をたたみ込む。各音から少しずつ送る
       const rev = ac.createConvolver();
       const n2 = Math.floor(ac.sampleRate * 2.4), ir = ac.createBuffer(2, n2, ac.sampleRate);
@@ -988,9 +1055,11 @@ const Snd = (() => {
     g.gain.linearRampToValueAtTime(0.0001, end);
     x = x || {};
     // 左右
-    if (x.pn && ac.createStereoPanner) { const pn = ac.createStereoPanner(); pn.pan.value = x.pn; g.connect(pn); pn.connect(bgmG); }
-    else g.connect(bgmG);
+    const out = padBus || bgmG;
+    if (x.pn && ac.createStereoPanner) { const pn = ac.createStereoPanner(); pn.pan.value = x.pn; g.connect(pn); pn.connect(out); }
+    else g.connect(out);
     send(g, x.rv);
+    if (x.dl && dlIn) { const ds = ac.createGain(); ds.gain.value = x.dl; g.connect(ds); ds.connect(dlIn); }
     // フィルター(ベースの「ワウッ」)
     let dest = g;
     if (x.flt) {
@@ -1029,46 +1098,85 @@ const Snd = (() => {
   }
 
   /* -- 描画中のハム音(軌跡が伸びるほど音程が上がる) -- */
+  let hum2 = null, humF = null, humBase = 110, humStep = -1;
   function startDraw(slow) {
     if (!ac) return;
     stopDraw();
-    hum = ac.createOscillator();
+    let b = Bgm.root() || 110;
+    while (b < 90) b *= 2; while (b > 180) b /= 2;
+    humBase = slow ? b : b * 1.5; humStep = -1;
     const g = ac.createGain();
-    hum.type = 'triangle';
-    hum.frequency.value = slow ? 110 : 170;
-    g.gain.value = 0.05;
-    hum.connect(g); g.connect(sfxG);
-    hum.start();
+    g.gain.setValueAtTime(0.0001, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.045, ac.currentTime + 0.05);
+    humF = ac.createBiquadFilter(); humF.type = 'lowpass'; humF.Q.value = 5; humF.frequency.value = 700;
+    hum = ac.createOscillator(); hum2 = ac.createOscillator();
+    hum.type = 'sawtooth'; hum2.type = 'triangle';
+    hum.frequency.value = humBase; hum2.frequency.value = humBase * 2; hum2.detune.value = 7;
+    hum.connect(humF); hum2.connect(humF); humF.connect(g); g.connect(sfxG);
+    hum.start(); hum2.start();
+    hum._g = g;
   }
+  const HUM_SCALE = [0, 2, 4, 7, 9];
   function updateDraw(len, slow) {
-    if (hum) hum.frequency.value = (slow ? 110 : 170) + Math.min(500, len) * 1.2;
+    if (!hum) return;
+    const st = Math.min(14, Math.floor(len / 5));
+    if (st === humStep) return;
+    humStep = st;
+    const n = HUM_SCALE[st % 5] + 12 * Math.floor(st / 5), f = humBase * Math.pow(2, n / 12), t = ac.currentTime;
+    hum.frequency.setTargetAtTime(f, t, 0.03); hum2.frequency.setTargetAtTime(f * 2, t, 0.03);
+    humF.frequency.setTargetAtTime(700 + st * 180, t, 0.05);
   }
   function stopDraw() {
-    if (hum) { try { hum.stop(); } catch (e) {} hum.disconnect(); hum = null; }
+    if (hum) {
+      const t = ac.currentTime;
+      try { hum._g.gain.setTargetAtTime(0.0001, t, 0.02); hum.stop(t + 0.1); hum2.stop(t + 0.1); } catch (e) {}
+      hum = null; hum2 = null;
+    }
   }
 
   const SCALE = [0, 3, 5, 7, 10, 12, 15, 17]; // ペンタトニック風
   return {
     ensure, applyVols, toggleMute, stopDraw, startDraw, updateDraw, react, sweep,
-    note, kick, hat, snare, blipDrum, ohat, crash, tom, clap,
+    note, kick, hat, snare, blipDrum, ohat, crash, tom, clap, setTempo, duck, bell, splat,
     get ac() { return ac; },
-    claim(cells, slow) {
+    claim(cells, slow, pat) {
       const n = 3 + Math.min(4, Math.floor(cells / 400));
       // BGMが鳴っていれば、いまのベース音を基準にする(曲とハモる)。低すぎれば上げる
       let base = Bgm.root();
       if (base) { while (base < 300) base *= 2; if (!slow) base *= 0.75; }
       else base = slow ? 392 : 330;
       base *= Math.pow(2, Math.min(combo, 6) / 12);   // コンボが続くほど半音ずつ上がる
-      for (let i = 0; i < n; i++)
-        tone(base * Math.pow(2, SCALE[i] / 12), 0, 0.1, 'square', 0.11, i * 0.055);
+      splat(Math.min(0.22, 0.08 + cells / 6000));      // インクのびちゃっ
+      if (cells > 1500) tone(base / 4, base / 8, 0.35, 'sine', 0.22);   // 大きいと低いどーん
+      for (let i = 0; i < n; i++) {                    // 四角い音と三角の音を重ねて厚く
+        const f = base * Math.pow(2, SCALE[i] / 12);
+        tone(f, 0, 0.1, 'square', 0.07, i * 0.055);
+        tone(f * 2, 0, 0.14, 'triangle', 0.05, i * 0.055 + 0.01);
+      }
+      // 模様ごとのひと飾り
+      const e = n * 0.055 + 0.04;
+      if (pat === 'dots') [0, 4, 7, 12].forEach((k, i) => bell(base * 2 * Math.pow(2, k / 12), 0.05, e + i * 0.06));
+      else if (pat === 'stripe' || pat === 'check') [0, 12, 0, 12].forEach((k, i) => tone(base * Math.pow(2, k / 12), 0, 0.04, 'square', 0.06, e + i * 0.045));
+      else if (pat === 'swirl') tone(base, base * 4, 0.45, 'triangle', 0.07, e);
+      else if (pat === 'wave') [0, 3, 0, 3, 0].forEach((k, i) => tone(base * 1.5 * Math.pow(2, k / 12), 0, 0.08, 'sine', 0.06, e + i * 0.07));
+      else if (pat === 'ripple') bell(base / 2, 0.09, e);
+      else if (pat === 'earth') [0, 7, 12, 16].forEach((k, i) => bell(base * Math.pow(2, k / 12), 0.045, e + i * 0.09));
     },
     // アイテム出現(ポロン)
     itemPop() { tone(1046, 0, 0.07, 'triangle', 0.1); tone(1568, 0, 0.1, 'triangle', 0.09, 0.07); },
     // 心臓の鼓動(ドクン、ドクン)
     heart()  { tone(70, 45, 0.12, 'sine', 0.22); tone(64, 42, 0.12, 'sine', 0.16, 0.16); },
-    item()   { [660,880,1320,1760].forEach((f,i)=>tone(f,f*1.02,0.08,'triangle',0.12,i*0.05)); },
+    item(k) {
+      [660,880,1320,1760].forEach((f,i)=>tone(f,f*1.02,0.08,'triangle',0.12,i*0.05));
+      if (k === 'rainbow') for (let i = 0; i < 10; i++) tone(523 * Math.pow(2, [0,2,4,7,9][i % 5] / 12 + Math.floor(i / 5)), 0, 0.09, 'triangle', 0.07, 0.2 + i * 0.035);
+      else if (k === 'splash' || k === 'paint') { splat(0.25, 0.12); tone(300, 90, 0.2, 'sine', 0.15, 0.12); }
+      else if (k === 'star') [0, 4, 7, 11, 14].forEach((s2, i) => bell(1046 * Math.pow(2, s2 / 12), 0.04, 0.2 + i * 0.05));
+      else if (k === 'life') [0, 7, 12].forEach((s2, i) => tone(784 * Math.pow(2, s2 / 12), 0, 0.14, 'square', 0.08, 0.2 + i * 0.09));
+    },
     big()    { [587,740,880,1175].forEach((f,i)=>tone(f,f*1.5,0.12,'sawtooth',0.09,0.25+i*0.05)); },
-    death()  { tone(500, 60, 0.5, 'sawtooth', 0.18); noise(0.35, 0.18); },
+    death()  {
+      tone(500, 60, 0.5, 'sawtooth', 0.16); tone(250, 40, 0.6, 'square', 0.08, 0.02);
+      splat(0.25); noise(0.35, 0.12);
+    },
     // r: それまでの曲のベース音(0なら従来のドの和音)。そこを根音に長三和音で上がる
     clear_(r) {
       let b = r || 261.6;
@@ -1136,14 +1244,15 @@ const Bgm = (() => {
         // 指定がなければ: 長い音(パッド)は深めのリバーブ、上のレイヤーは左右に振り分ける
         const x = { flt: tr.flt, vib: tr.vib,
           rv: tr.rv != null ? tr.rv : tr.g >= 8 ? 0.45 : tr.l >= 1 ? 0.28 : 0.06,
-          pn: tr.pn != null ? tr.pn : tr.l >= 1 ? (i % 2 ? -0.3 : 0.3) : 0 };
+          pn: tr.pn != null ? tr.pn : tr.l >= 1 ? (i % 2 ? -0.3 : 0.3) : 0,
+          dl: tr.dl != null ? tr.dl : tr.l >= 1 && tr.g < 4 ? 0.16 : 0 };     // 上のレイヤーの短い音は、やまびこを少し
         Snd.note(f, t, dur, tr.w, tr.v, tr.a, tr.r, tr.det, x);
         for (let e = 1; e <= (tr.echo || 0); e++)            // やまびこ(左右に跳ねる)
           Snd.note(f, t + e * tr.ed * stepDur, dur, tr.w, tr.v * Math.pow(0.45, e), tr.a, tr.r, tr.det, Object.assign({}, x, { pn: -(x.pn || 0.4) }));
       } else {
         const set = sec.alt && tr.set2 ? tr.set2 : tr.set;
         if (!set.has(st)) continue;
-        if (tr.t === 'kick') { Snd.kick(t, tr.v); kickTimes.push(t); if (kickTimes.length > 16) kickTimes.shift(); }
+        if (tr.t === 'kick') { Snd.kick(t, tr.v); Snd.duck(t, song.pump != null ? song.pump : 0.3); kickTimes.push(t); if (kickTimes.length > 16) kickTimes.shift(); }
         else if (tr.t === 'hat') Snd.hat(t, tr.v);
         else if (tr.t === 'snare') Snd.snare(t, tr.v);
         else if (tr.t === 'blip') Snd.blipDrum(t, tr.v);
@@ -1190,6 +1299,7 @@ const Bgm = (() => {
         if (tr.p2 && !tr.set2) tr.set2 = new Set(tr.p2);
       }
       step = 0; formIdx = 0; formRep = 0; rootHz = 0;
+      Snd.setTempo(song.bpm);
       nextT = Snd.ac.currentTime + 0.08;
       startTimer();
       tick();
@@ -1942,12 +2052,57 @@ function rbBin(c) {
   else d = (P[c * 3] * ink.v[0] + P[c * 3 + 1] * ink.v[1] + P[c * 3 + 2] * ink.v[2]) * 5;
   return ((Math.floor(d) % RB_N) + RB_N) % RB_N;
 }
-function colFor(c, no) { return no < 0 ? RB_BASE + rbBin(c) : no; }
+function colFor(c, no) { return earthMode() ? EARTH_BASE + earthIdx(c) : no < 0 ? RB_BASE + rbBin(c) : no; }
 // colA の番号 → 色
 function palHex(a) {
+  if (a >= EARTH_BASE) return EARTH_PAL[a - EARTH_BASE];
   if (a >= RB_BASE) return RB_COLORS[a - RB_BASE];
   if (a >= INK_BASE) return INK_ALL[a - INK_BASE];
   return themePal[a - 1];
+}
+
+/* ---------------- 球: 地球の地図 ----------------
+   球(SPHERE)では、囲んだところに地球の地図があらわれる。最初の陣地(HOME)は日本。
+   地図は Natural Earth 110m(パブリックドメイン)の陸地・湖を2度刻み(180×90)にしたもの。
+   地表の種類(海の深さ・海氷・氷床・ツンドラ・森・草原・砂漠・山…)は緯度と地域から決めた近似 */
+const EARTH_RLE = 'f180f180f180f49h4g4f11g10f102f43h1f1h8g3f2g25f54h1f42f37h2f4h3f1h5f4g24f16h5f37h4f38f30h2f10h1f2h5f4g27f17h1f42h2f37d2c6d13c1d6e6h3e1d1e1h1e1h1e1h6e2d2e7g19e1d2c4b4c4d3e1d9c6d2e2h2e1d9e3h13e5d1e2d4e1h3e1h2e1d8c1d5e1d2c4d4e2d14e1h3e1h1e3h1e1d1e1h1e1h2e1h4e1h2e2d7e1g17e1d2c4b6c4d6e2d7c1d3e1h2e2d3e3d1e3h21e1h2e1d1e10d2e1d10e1h1e1d2c2d2e3h2e8d1e6h1e2h7e1d1e2h2e2h7g1e2d6e2g13e1g1e1d3c6b2c5d3e3h2e4d8e1h1e1d1e3h3e1h28e1h10e2h1e5d1e4h1e3d4e1h13e1h9e2h3e2h1e2h1e1h3e1h2e3h1g3e2d2c1d2e1g13e2d5c10d3e2h9e3d1e1d1e6h3e1h2e1h47e1h5h3e1d3e1h41e1d1e2g5e1d3e1g10e4d2e4d2c8d3e1h14e1h1e1h12e1h53e2i2e1d1e1i22e1i16e1i1e1d1e1i2g4e1d2c1d2e1g6e3d5e1g4e1d2c6d2e2i5e2i4e1i1e1i70e1d1e2d3e1i37e1d1e1d3e3g2e1g1e1d2c1d2e1g4e1d9e4d2c2d2c2d2e1i5e2i79d6e1i7e1i17e1i10e2d5e1i2g2e1d1e1d3c2d2e1g3e1d3c5d6c2d6e1i6e2i4e1i62e2i1e1i4e4d1c1d2c1d2e2i4e1d1e6i22e2d5e1i2g2e2g1e1d3c2d2e3d2c8d4c2d2e2d3e1i6e1d1e1i59e5i1e3i1e5d4c6d2e3i1e1d8e2i4p7o1p2i8e4d2e1i7e2d2c2d5c14d2e1i2e1d3e1i1e1i2e1d1e1i58e2d5e2i4e1d7c5d2e1i1e1d1e1d2c1d8e2i2p1o1p2o1p3o1p1i12e2i10e1d2c2d3c14d2e1i3e1d2e2i1e5i5m2k4m2k1m1k5m1k3m1k4m1k1m1k1m1k1i23e4d5e1i3e1d4c4c6d2e1d4c8d3e1i2p3o1p1o1p4i3e1i8e2i11e1d2c8b5c4d2e1i2e1i2e2i13k3m1k2m1k2m1k5m2k1m1k6m1k3m1i8e1i18e1d4e1i1e2d2c7c1b1c5d3c1d1c11d2e1j1p1o1p2o1p3o2k1m1k2e1k1j2k1j2k1j3k1j1k1j7e1d2c6b8c4d2e3j2e1j3k1j2k1j3k2j2k2m1k2m2k4m1k1m1k2m1k1m2k1m2k6m1k7j1k3j1k1j3k1j2k2j1k1j1k1e1j1e1d2c1d2e1d3c8b4c4d1c15d2e1o1e1o2p3o1p1o1k1m3k2j5k1j1k1j3k1j1e1j1e3k1j1e1d2c4b10c4d4e1j5k1j1k1j2k1j4k9m1k1m1k4m1k4m1k3m1k1m1k1m1k4j2k2j9k1j3k2j2k1e1k1e1d2c2d4c9b5c9b1c10d2e1p7o1p1k1m3k1m1j1e1j1e2j2k2j6e1d2e2j1e1d2c4b9c4d4e1j3o1p1o1p2o1j4k1j1k6m1k1m1k4m1k4m1k1m1k4m1k5j1k3j1k3j1k1j2k2j3k1j3k2j1e2j1e1d2c3d1c7b4b6c7b8c4d2e1p3o2p1o3k1m3k1m1j3e1k1e2j1k2j3e1j2e1d3e1d2c4b9c4d2e4j1k2p2o2e1p1j1k2j4e2k1e1k5e2n3o1n3k1m1k2n3o2n3o1n1o4n5j2k1j1k2j4k1j1e1d1e2d2c9b7b7c3b1c1b9c4d2e1p2o1p4o2m3k1m2k1j1k1e1j2k1j2k2j1e1d1e2d6c4b9c4d2e1j2k1j4e3p2e2j5e6p2o1p1e2o3n3o1k1j3o1n8o1n4o1n4k1j1k1j1k1j6e1d1e1j1k1e1d2c7b8b8c1b12c4d2e1o2p2o1p1o1p1o1m2k1m1k1m1j3k1j4k1j2e1d5c3d1c4b11c4d2e1j4e2d1e1j1e2j2e1j1k1j2e1j5o1p1o2p1e2n1o1n1o1n2k1j1k1j1n7o2n3o1n1o2n3j2k1j4k1j1e2d2e1j1e1d2c7b9b21c4d2e1p6o1p1o1k1m2k3j4k1j4e2d2c1d2c8b11c4d2e1k2j2k1e1d2e3d1e1j1e1j1k1e1k1j4k2o3p2e2o2n4j1k1j1p3o3p1o3p4n2o1n3j1k1j1e4j1e1d3e2j1e1d2c5b11b1a1b20c4d2e1p2o1p5n1m1k4j2k1j6e1d2c11b13c4d2e2j2e4j3e1j1e1d1e4j5k1j4k1e2j1k1j2k1j4o1p2o2p5o2p1o1n1o1n1o1n1o1j1k1j1k1j1e2j1k1e3j2e1d2c4b13a4b19c4d2e1o2p4o1n1k6j8e1d2c10b7a1b7c4d2e1k1j1k3j2k1e1d1e1d3e1j1e3j1e1j2k2j1k1j3n4o1n4p3o2p3o1p2o1p2k2j2k1j1k3j1e1d1e1j1e2j4e1d2c4b13a5b9a1b9c4d2e1n4o1n2k5j1k1j5e2d2c6b3c1b7a1b7c4d2e1j3k1j4k1j1e3d1e4d1e3j3k1j1k1j2k1n6o1n2p3o1p1o1p4o2p1o1k1j2k1j1k1j4e1d2e2j1k1e3d2c4b10a4a6b7a5b7c4d2e1n1o1n4k1j8k1j1e1d3c6b11a1b7c4d2e1n11o1n2e1o2n2e1n2o1n1o1n6o1n5o1n3p1o1p7o1p4j10k1e1d3e2d4c4b8a7a7b3a1b1a7b7c4d2e2o3n1j4e7j1e1d2c4b12a1b7c4d2e2n4o1n4o1n12o1n6e1n1o2n2o1n4o1p1o2p3o2p2o1p1o1p1j1k1j6k1j1k1e1d8c4b8a8a8b1a10b7c4d2e1n1e1n1o1n1j1k1j1e1d6e1j1e1d2c5b10a1b7c4d2e1n13o1n2o1n3o1n1o1n1e1n3o2n2e2n9p5o2p1o2p4j3k1j2k1j3e1d2c2d2c6b8a9a20b7c4d2e1n1e1n1o1k1j2e1d6e2d3c1d1c4b17c4d2e1n1o2n1o2n3o1n4o1n4o1n1o2n1e2n7e1n1e5o1n2j4k3j8k2j7e1d2c9b7a11a21b7c4d2e1d1e1j2k2e1d3e3k2e2d4c4b15c4d2e1o1n1o1n5o1n4o1n12e1n2o1n2o1n5e1d2e2j10k1j2k1j1k1j2k1j2k1j1e2k1e1d2c7b7a12a22b7c4d3e1j1k1j2e1d2e1j2e4j1e1d1e1d2c4b13c4d2e1n4o1n1o1n1o2n3o1n1o1n3o1n5o1n1o1e1n4o1n4e1d4e1k1j6k1j1e2j1k2j4k1e4d2e1d2c7b7a1b1a11a23b7c4d3e1k1m2k1e2m2e1d4e1d1e1m1e1d2c6b11c4d2e1n1o1n1o1n4o1n13o1n4e2n5o2n1e1d2c1d2e1m1k3m2e2d2e1m2k3m1e1m1e1d4e1d2c4b9a1b4a9a24b7c5d2e2k2m4e2d6e1d2c8b10c4d2e1n4o1n7o1n10o1n1o1n1e2n3o1n1o1e2d2c3d2e1m1k1m2e1d4e1k1m5k1e1d4e1m1e1d2c4b14a8a25b7c5d3e4m3k1e1d11c6b8c4d2e1n3o1n2o2n4o1n1o1n14e1n3o1e2d3c4d2e1m1k1m1e1d3c1d2e2m1k1m3e1d4e1m1e1d2c4b15a7a26b7c5d6e2k1m1e1d3e4d5c6b8c4d2e1m1k14m1k1m1k1m3k2o1n1o1n1o1e1n1e3d3c5d2e1m3e1d2c3d2e1m3k1m2e1d3e1m1e2d2c4b15a6a27b7c6d6e1k1e1d1e2k1m2k1e4d4c6b5c4d2e1k1m1k1l3k2m1k5m1k3m2k1m2k5m2e2k1m1e1d2c6d2e1m2e1d2c3d2e1k1e2k1m1e1d5e2k1e1d2c5b14a5a28b8c8d3e1k1e1m1e1m2k1m5e1d4c7b4c4d2e1m1k1l3m1k1m2k3m1k1m1k2m2k1m1k1m1k1m2k1m1k1m3e1d2c7d2e1m1e1m1e1d2c2d2e1l1e2l1e1d8e1d2c8b13a4a29b8c9d2e1d1e1l10e3d2c7b4c4d2e1l31e1d2c8d2e2l1e1d2c2d2e5d4e2d2e1l1e1d2c8b4c1b8a3a30b8c9d3e1p4o1p1l7e1d2c7b4c4d2e1l2e1l1e4l21e1d2c4b2c4d3e1d2c2d2e1l1e1l2e1d3e1l2e1d2e1d4c8b2c4b7a2a31b9c8d2e1p3o1p1o1l8e1d4c5b4c4d2e2d1e1d4e2l18e1d2c4b4c4d4c4d2e1l1e1l1e1d2e1l3e2d10c11b7a1a32b11c4d2e1l1p3o2p1l8e2d5c4b4c4d10e1l17e1d2c4b6c5d1c5d2e1l2e1d2e1l4e1l1e1d3e2d6c10b7b1a32b10c4d2e1l1p3o1p1o1l10e3d3c4b4c4d2c1d1c2d2e1l12e1l4e1d2c4b8c11d2e1l2e1d1e1l4e2d3e1l2e4d3c4d1c5b6b2a32b9c4d2e1l1p2o1p3l13e2d2c4b4c10d2e1l15e1d2c4b10c6b1c4d2e1l2e2l3e1l2e1d1e1l1e1l1e1l3e2d2c2d4c4b5b3a32b7c4d2e1l2p5o1l15e1d2c4b4c10d2e1l14e1d2c5b10c4b3c4d2e1l1e5d1e2l1e1d1e1d1e1d1e1l4e1d4e1d3c4b4b4a32b7c4d2e1l1p5o1l16e1d2c4b4c9d2e1l14e1d2c1d1c4b11c1b5c4d2e1l3e1d1e1d2e2d5e1l5e1d2e1l1e2d2c4b3b5a32b7c4d2e1p4o2l11m1k1m1k1e1d2c4b6c2b1c5d2e1m5k1m8e1d5c4b17c4d2e3d1e1l1e1d1e1l1e1d5e1l2e1l1e1d3e2k1e1d2c4b2b6a31b7c4d2e1p1o2p3l11m3e1d2c4b12c4d2e1m1k1m1k1m1k1m1k1m3k1m1e1d3e1d2c4b17c4d6e1d3e1d2e3d2e2d1e1d2c1d3e1d4c4b1b7a31b7c4d2e1p5l11m3e1d2c4b11c4d2e1k1m1k1m1k1m1k1m4k1m2e1d2e1m1e1d2c4b17c4d3c1d5e3m3e1d1e1m1e1d2c3d5e1d2c4c1b7a30b7c4d2e1o3p2k3m3k2m1k1m2k1m1e1d2c4b11c4d2e1k1m1k6m2k3m1e1d1e2k1e1d2c4b18c8d3e1m1k1m1k2m1e1d1e1k1m1e1d2c4d2e1m1e1d2c3b7a32b7c4d2e2p3k1m1k1m1k2m1k2m3k1e1d2c4b12c4d2e1n2o2n1m3k1m4e1d1e1m2k1e1d2c4b11a1b7c6d3e1m4k1m2k1e2m2e1d2c5d2e1d2c4b6a34b7c4d3e1p1o1m2k1m2k1m1k1m2k1m1k1e1d2c4b12c4d2e1n1o1n3m1k1m1k1m3e1d2e1m1k1m1e1d2c4b10a3b7c4d2e3n1o2n4o1n2m2e2d2c3d2e1d2c4b1b7a34b7c4d2e1p2k1j2k1j1k1j3k2j2e1d2c4b13c4d2e1n3o1k1j6e1d2e1j2e1d2c4b7a2b1a3b7c4d2e1o1n3o1n1o1n2o1n3j2k2e1d2c1d2e1j1e1d2c4b6a35b7c4d2e1p2k1j7k2j1e2d2c4b14c4d2e1n1o1n2j5k1j1e1d2e1j1k1e1d2c4b7a5b7c4d2e1n1o1n1o1n2o1n3o1n2o1j4e1d2c2d2e1d2c4b1b6a35b7c4d2e1o1p1k1j2k1j4k1e2d3c4b7a1b7c4d2e1n2o1n1j2k1j2k1e1d3e1j1e1d2c4b7a6b7c4d2e1o1n3o1n2o1n3o1n2j3k1j1e1d2c2d3c5b1b7a34b7c4d2e1p2j2k3j2k1j1e1d3c4b7a3b7c4d2e1o2n1k1j1k1j2e1d2c1d2e1d2c4b9a5b7c4d2e1n5o1n5o2n1j2k1j3e1d2c2d1c7c1b7a32b7c4d2e1p3k2m1k1m1j3e1d2c5b7a4b7c4d2e1j4k1j1k2e1d2c2d3c4b11a4b7c4d2e1n2o1n11m4j1k1e1d2c6d1c3c2b7a31b7c4d2e1p3k5j3e1d2c4b7a6b7c4d2e1j6e1d2c4d1c4b13a4b7c4d2e1n4o1n1o2n5m1k3j2e1d2c5d3c2c3b7a30b7c4d2e1p1o1p1k3m2j2e1d2c4b7a7b7c4d2e1j2k1j1k1e1d2c9b15a3b7c4d2e1k2j1k1e5k7m1j1e1d2c5d2e1d2c1c4b7a29b7c4d2e1o2p1k2m2e3d2c4b7a9b7c4d2e5d2c9b9c1b7a2b7c4d2e1j1e3d5e2k5m1e1d2c5d2e1k1e1d2d1c4b7a27b7c4d2e1p2o1p1k3m1k1e1d2c4b7a11b7c4d7c4b2c3b9c3b7a2b7c4d2e1d10e1j3k1j1e1d2c6d2e1j1e1d1d2c4b7a26b7c4d2e1p4k1j1e3d2c4b7a13b7c4d5c4b4c1b9c5b8a1b7c4d5c5d3e5d2c7d2e1j2e1d1c4b7a27b7c4d2e1j1k3e1j1e1d3c4b7a15b7c11b14c7b16c4d1c10d2e1j2e1d2c6d2e1j2e1d1c4b7a29b7c4d2e1k3m1e1d3c4b7a17b7c9b14c4d1c4b16c15d2e1j1e1d2c5d2e1j2e1d2c3b7a28b8c4d2e1k4e1d2c5b7a11b15c7b14c4d3c4b16c15d2e1d2c5d2e1k1j1e1d2c1c2b7a11b16a1b9c4d2e1j1k2m1e1d2c4b7a10b18c5b14c4d2e1d2c4b16c5b5c5d3c7d2e2d2c2c1b7a7b30c4d2e1k1j1k2e1d2c4b7a5b42c4d2e1k1e1d2c4b16c1b10c4d1c4b1c4d4c3b45c4d2e1j2k1e1d2c4b56c4d2e1d2c4b29c7b3c4d2c4b46c4d2e1j3e1d2c4b52c8d3c4b4c1b5c9b2c15b5c8b1b47c4d2e1j2e1d2c4b44c1b2c14d1c43b4c6b2b48c4d2e2d2c4b29c86b3b38c3b4c1b3c4d4c1d1c4b20c93b4b20c16b1c17d6c4b17c34d4c15d1c5d9c2d12c13b4b15c40d3e1d2c4b10c32d1c2d15c4d39c9b3c54d2e2g1e1d2c29d24e4d15e1d5e9d2e12d11c6c38d3c4d1c7d2e1g2e1d2c22d24e1d2e5g4e6d4e5g1e5g9e2g12e5d7c5f56g2f49g1f2g15f4g39f12f54g5f32g33f2g48f6f38g3f4g1f10g4f23g92f5f20g16f1g1f2g18f23g92f7f15g36f24g97f8g180g180g180g180g180g180';
+const EARTH_PAL = ['#0a2350', '#0f3268', '#16467f', '#1f5d98', '#2f79b0', '#d6e4ec',   // 海(深い→浅い)・海氷
+                   '#f3f6f8', '#8b957a', '#2d5634', '#3e7338', '#86a052', '#1e5a2c',   // 氷床・ツンドラ・北方林・森・草原・熱帯雨林
+                   '#b0a15c', '#dcc28a', '#b88f5c', '#8c7b66'];                        // サバンナ・砂漠・岩の砂漠・山
+const EARTH_BASE = RB_BASE + RB_N;
+let earthMap = null, earthRot = null;
+function earthGrid() {
+  if (earthMap) return earthMap;
+  earthMap = new Uint8Array(180 * 90);
+  let i = 0;
+  EARTH_RLE.replace(/([a-p])(\d+)/g, (m, k, n) => { earthMap.fill(k.charCodeAt(0) - 97, i, i + (+n)); i += +n; return ''; });
+  return earthMap;
+}
+function earthMode() { return !!surf && surf.key === 'SPHERE'; }
+// ゲームの向き → 地球の向き。HOME の中心が日本(北緯36度・東経138度)に来るように回す
+function setupEarth() {
+  const P = surf.pos;
+  let h = [0, 0, 0];
+  for (let c = 0; c < surf.N; c++) if (colA[c] === HOME_COL) { h[0] += P[c * 3]; h[1] += P[c * 3 + 1]; h[2] += P[c * 3 + 2]; }
+  h = vnorm(h);
+  const la = 36 * Math.PI / 180, lo = 138 * Math.PI / 180;
+  const j = [Math.cos(la) * Math.sin(lo), Math.sin(la), Math.cos(la) * Math.cos(lo)];
+  const ax = vcross(h, j), sn = Math.hypot(ax[0], ax[1], ax[2]), cs = h[0] * j[0] + h[1] * j[1] + h[2] * j[2];
+  if (sn < 1e-6) { earthRot = [1, 0, 0, 0, 1, 0, 0, 0, 1]; }
+  else {
+    const k = ax.map(v => v / sn), K = [0, -k[2], k[1], k[2], 0, -k[0], -k[1], k[0], 0];
+    const KK = [0, 1, 2].flatMap(r => [0, 1, 2].map(c2 => K[r * 3] * K[c2] + K[r * 3 + 1] * K[3 + c2] + K[r * 3 + 2] * K[6 + c2]));
+    earthRot = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => (i % 4 === 0 ? 1 : 0) + sn * K[i] + (1 - cs) * KK[i]);
+  }
+  for (let c = 0; c < surf.N; c++) if (colA[c] === HOME_COL) colA[c] = EARTH_BASE + earthIdx(c);
+}
+function earthIdx(c) {
+  const P = surf.pos, R = earthRot || [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const x = P[c * 3], y = P[c * 3 + 1], z = P[c * 3 + 2], l = Math.hypot(x, y, z) || 1;
+  const ex = (R[0] * x + R[1] * y + R[2] * z) / l, ey = (R[3] * x + R[4] * y + R[5] * z) / l, ez = (R[6] * x + R[7] * y + R[8] * z) / l;
+  const lat = Math.asin(clamp(ey, -1, 1)) * 180 / Math.PI, lon = Math.atan2(ex, ez) * 180 / Math.PI;
+  const px = clamp(Math.floor((lon + 180) / 2), 0, 179), py = clamp(Math.floor((90 - lat) / 2), 0, 89);
+  return earthGrid()[py * 180 + px];
 }
 
 /* ---------------- 塗りの模様 ----------------
@@ -1955,7 +2110,7 @@ function palHex(a) {
    セルごとに「2色目(col2A)」と「混ぜ具合(mixA 0..7)」を持ち、色 = palHex(colA) と palHex(col2A) を mixA/10 だけ混ぜた色。
    優先順: 虹 > STAR(金の水玉) > コンボ(ストライプ/4以上はチェック) > SLOW中(波) > じっくり描いた(うずまき) > 大きく取った(波紋) > グラデーション */
 let col2A = new Uint8Array(0), mixA = new Uint8Array(0);
-let newCells = [];                       // 直前の塗りで塗ったセル(模様をつける対象)
+let newCells = [], lastPat = 'grad';                       // 直前の塗りで塗ったセル(模様をつける対象)
 const PATTERNS = {
   grad:   { name:'グラデーション' },
   ripple: { name:'波紋',     why:'大きく取った' },
@@ -2065,9 +2220,53 @@ function fillMixCol(i, k) {
   for (let l = 0; l < LV; l++) col3D[i * LV + l] = rgbStr(c, 0.74 + 0.36 * l / (LV - 1));
 }
 
+/* ---------------- 線の色(となりの陣地の色がにじむ) ----------------
+   陣地のあいだの線は、となりの陣地の色を縫い合わせたような模様(市松に交互)になる。
+   まだ空き地に面している線(歩ける道)は、となりの色を明るくした色で見えるように残す */
+function lineNeighbors(c) {
+  const out = [];
+  for (let m = c * 8, e = m + 8; m < e; m++) {
+    const b = surf.nb8[m];
+    if (b < 0 || grid[b] !== WALL) continue;
+    const a = colA[b];
+    if (!a || a === HOME_COL) continue;
+    if (!out.includes(a)) out.push(a);
+  }
+  return out.sort((x, y) => x - y);
+}
+// 平面: 線のセルの色(null = いつもの線の色)
+function lineHex(c, x, y) {
+  const ns = lineNeighbors(c);
+  if (!ns.length) return null;
+  if (isBoundary(c)) {           // 歩ける道: となりの色の平均を明るく
+    const avg = [0, 0, 0];
+    for (const a of ns) { const r = rgbOf(palHex(a)); avg[0] += r[0] / ns.length; avg[1] += r[1] / ns.length; avg[2] += r[2] / ns.length; }
+    return hexOf(mixRgb(avg, [255, 255, 255], 0.4).map(v => Math.round(v / 8) * 8));
+  }
+  return cellHex(ns[(x + y) % ns.length], WHITE_NO, 1);   // 陣地のあいだ: 両側の色を市松に縫い合わせる
+}
+// 立体: 線のセルの色番号(毎フレーム計算すると重いので、0.3秒ごとに作り直す)
+let lineCache = new Int16Array(0), lineCacheT = -1;
+function lineCi(c) {
+  if (lineCache.length !== surf.N || blinkT - lineCacheT > 0.3 || blinkT < lineCacheT) {
+    if (lineCache.length !== surf.N) lineCache = new Int16Array(surf.N);
+    lineCache.fill(-1); lineCacheT = blinkT;
+  }
+  if (lineCache[c] < 0) lineCache[c] = lineCiCalc(c);
+  return lineCache[c];
+}
+function lineCiCalc(c) {
+  const ns = lineNeighbors(c);
+  if (!ns.length) return 3;
+  if (isBoundary(c)) { const mi = mixCi(ns[0], WHITE_NO, 4, 0); return mi >= 0 ? mi : 3; }
+  const mi = mixCi(ns[c % ns.length], WHITE_NO, 1, 0);
+  return mi >= 0 ? mi : 3;
+}
+
 /* ---------------- テーマ適用 ---------------- */
 const LV = 6;       // 立体面の陰影段階数
-const NCOL_BASE = 24 + 2 * (13 + 12);  // 立体面の固定の色(下の bases の数。インク11色+金+白+虹12色、その暗い版)
+const EARTH_CI0 = 24 + 2 * (13 + 12);  // 地球の色の始まり
+const NCOL_BASE = EARTH_CI0 + 16;       // 立体面の固定の色(下の bases の数。インク11色+金+白+虹12色とその暗い版+地球16色)
 const MIX_SLOTS = 120;                  // 模様・グラデーション用に、その場で作る混ぜ色の枠
 const NCOL = NCOL_BASE + MIX_SLOTS;
 const FLASH_CI = 23; // 塗りの波の光
@@ -2111,12 +2310,14 @@ function buildColors() {
   ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.88)),
            [mixRgb([255,255,255], acc, 0.25)],             // 23 塗りの波が通った瞬間の光
            INK_ALL.concat(RB_COLORS).map(rgbOf),           // 24.. インク・虹
-           INK_ALL.concat(RB_COLORS).map(c => mixRgb([0,0,0], rgbOf(c), 0.88)));
+           INK_ALL.concat(RB_COLORS).map(c => mixRgb([0,0,0], rgbOf(c), 0.88)),
+           EARTH_PAL.map(rgbOf));                          // 地球
   col3D = [];
   bases.forEach((b, ci) => {
-    const bright = ci >= 3 && ci <= 5, inkc = ci >= 24;
+    const bright = ci >= 3 && ci <= 5, inkc = ci >= 24 && ci < EARTH_CI0, earth = ci >= EARTH_CI0;
     for (let l = 0; l < LV; l++)
-      col3D.push(rgbStr(b, bright ? 0.66 + 0.38 * l / (LV - 1) : inkc ? 0.74 + 0.36 * l / (LV - 1) : 0.46 + 0.80 * l / (LV - 1)));
+      col3D.push(rgbStr(b, bright ? 0.66 + 0.38 * l / (LV - 1) : inkc ? 0.74 + 0.36 * l / (LV - 1)
+                           : earth ? 0.5 + 0.62 * l / (LV - 1) : 0.46 + 0.80 * l / (LV - 1)));
   });
   for (let j = 0; j < MIX_SLOTS; j++) {
     if (j < mixSlotKeys.length) fillMixCol(NCOL_BASE + j, mixSlotKeys[j]);
@@ -2152,7 +2353,7 @@ function initLevel(lv) {
   grid = new Uint8Array(surf.N);
   colA = new Uint8Array(surf.N);
   col2A = new Uint8Array(surf.N); mixA = new Uint8Array(surf.N);
-  mixSlot.clear(); mixSlotKeys.length = 0;
+  mixSlot.clear(); mixSlotKeys.length = 0; earthRot = null;
   claimAt = new Float32Array(surf.N).fill(-1e9);
   ringA = new Uint8Array(surf.N);
   waveUntil = 0; rings = [];
@@ -2167,6 +2368,7 @@ function initLevel(lv) {
     if (!(stats.maxArea[modeKey()] >= lv)) stats.maxArea[modeKey()] = lv;   // 最高到達エリア
   }
   const s = surf.setup();
+  if (earthMode()) setupEarth();
   homeCell = s.home;
   initOpen = 0;
   for (let i = 0; i < surf.N; i++) if (grid[i] === OPEN) initOpen++;
@@ -2225,7 +2427,11 @@ function redrawField() {
     const i = idx(x, y);
     if (grid[i] !== WALL) continue;
     const c = colA[i], cx = x * CS + CS / 2, cy = y * CS + CS / 2;
-    if (!c || c === HOME_COL) add('line', cx, cy, CS * 0.62);
+    if (!c || c === HOME_COL) {
+      const lh = c ? null : lineHex(i, x, y);
+      if (!lh) add('line', cx, cy, CS * 0.55);
+      else add('L' + lh, cx, cy, isBoundary(i) ? CS * 0.55 : CS * 0.98);
+    }
     else {
       add((ringA[i] ? 'd' : 'n') + c + (mixA[i] ? ':' + col2A[i] + ':' + mixA[i] : ''), cx, cy, CS * 0.98);
       // インクのムラ(濃いしみ・薄いしみ)と、つやの点
@@ -2237,6 +2443,7 @@ function redrawField() {
   }
   for (const key in paths) {
     if (key === 'line') continue;
+    if (key[0] === 'L') { fctx.fillStyle = key.slice(1); fctx.fill(paths[key]); continue; }
     const [c, b, m] = key.slice(1).split(':').map(Number), hx = cellHex(c, b || 0, m || 0);
     fctx.fillStyle = key[0] === 'd' ? shade(hx, 0.9) : hx;
     fctx.fill(paths[key]);
@@ -2244,7 +2451,7 @@ function redrawField() {
   // ムラは陣地の上だけに(陣地の形で切り抜く)
   fctx.save();
   const clip = new Path2D();
-  for (const key in paths) if (key !== 'line') clip.addPath(paths[key]);
+  for (const key in paths) if (key !== 'line' && key[0] !== 'L') clip.addPath(paths[key]);
   fctx.clip(clip);
   fctx.fillStyle = 'rgba(0,0,0,0.10)'; fctx.fill(dim);
   fctx.fillStyle = 'rgba(255,255,255,0.07)'; fctx.fill(lit);
@@ -2433,6 +2640,7 @@ function enterTrail(n) {
 function closeTrail() {
   Snd.stopDraw();
   const slow = !player.usedFast;
+  const inkCol = trailHex(!slow);
   const mul = (slow ? 2 : 1) * surf.def.pts;
   const palNo = inkNo((slow ? 4 : 0) + 1 + ((Math.random() * 4) | 0)); // 1..4=FAST色, 5..8=SLOW色 / INK はインク色
 
@@ -2478,7 +2686,8 @@ function closeTrail() {
   claimed += gained;
   // 模様: 塗ったときの状況(時間・面積・アイテム・コンボ)で決まる
   const pat = pickPattern({ drawTime: blinkT - (player.drawT || blinkT), pct: gained / initOpen * 100 });
-  if (!inkRainbow()) {
+  lastPat = pat;
+  if (!inkRainbow() && !earthMode()) {
     applyPattern(newCells, pat);
     if (pat !== 'grad' && newCells.length > 30) {
       const P0 = surf.screenOf(player.c);
@@ -2520,15 +2729,15 @@ function closeTrail() {
     floats.push({
       x: sp.x, y: sp.y,
       txt: '+' + pts + (slow ? ' x2' : ''), t: 1.2,
-      col: slow ? theme().trailS : theme().trailF,
+      col: inkCol,
     });
     for (let i = 0; i < trail.length; i += surf.is3D ? 3 : 6) {
       const p = surf.screenOf(trail[i]);
-      spawnParticles(p.x, p.y, 2, slow ? theme().trailS : theme().trailF);
+      spawnParticles(p.x, p.y, 2, inkCol);
     }
-    Snd.claim(gained * (surf.is3D ? 4 : 1), slow);
+    Snd.claim(gained * (surf.is3D ? 4 : 1), slow, earthMode() ? 'earth' : lastPat);
     Snd.sweep();
-    rings.push({ x: sp.x, y: sp.y, t: 0, col: slow ? theme().trailS : theme().trailF });
+    rings.push({ x: sp.x, y: sp.y, t: 0, col: inkCol });
   }
 
   trail = [];
@@ -3381,7 +3590,7 @@ const RARE_LINES = ['実はローラー、自作なんだ', 'このゲーム、C
   '本当はオレンジより青が好き', 'いつかクラインの壺で昼寝したい', '/buddy pet', 'git push --force はだめだよ'];
 const TOPICAL_LINES = ['AIと一緒にコードを書く時代だね', 'buddyに名前つけた?', 'ターミナルにも仲間がいる時代'];
 // 盤面ごとのひとこと(エリア開始)
-const SURF_LINES = { PLANE:'まずは平らなところから', CUBE:'サイコロの上だ!', SPHERE:'地球みたい', TETRA:'とがってる…',
+const SURF_LINES = { PLANE:'まずは平らなところから', CUBE:'サイコロの上だ!', SPHERE:'地図をうめていこう!', TETRA:'とがってる…',
   OCTA:'ピラミッド2つ分', DODECA:'五角形がいっぱい', ICOSA:'20面ダイス!', TRUNC_ICOSA:'サッカーボールだ!',
   CUBOCTA:'きれいな形', ICOSIDODECA:'まるっこい', RHOMBICUBOCTA:'ころころしそう', TRUNC_TETRA:'角がとれてる',
   TRUNC_CUBE:'角がとれてる', TRUNC_OCTA:'すき間なく並べられるらしい', TRUNC_DODECA:'十角形だ',
@@ -3528,7 +3737,7 @@ function collectItems() {
     floats.push({ x: p.x, y: p.y - 14, txt: I.label + '!  ' + I.txt, t: 1.8, col: I.col, big: true });
     spawnParticles(p.x, p.y, 26, I.col);
     rings.push({ x: p.x, y: p.y, t: 0.3, col: I.col });
-    Snd.item();
+    Snd.item(it.k);
     if (it.k === 'life') say('いのちふえた!', 1.4, true); else if (it.k === 'shield') say('まもりOK!', 1.4, true); else sayLine('item', 1.4, true);
   }
 }
@@ -4835,7 +5044,8 @@ function render3D(t) {
       if (ca > now) ci = par[c];                    // 塗りの波がまだ届いていない
       else {
         const a = colA[c];
-        ci = a === 0 ? 3 : a === HOME_COL ? 6 : a >= INK_BASE ? 24 + a - INK_BASE + (ringA[c] ? INK_ALL.length + RB_N : 0) : 6 + a + (ringA[c] ? 8 : 0);
+        ci = a === 0 ? lineCi(c) : a === HOME_COL ? 6 : a >= EARTH_BASE ? EARTH_CI0 + a - EARTH_BASE
+           : a >= INK_BASE ? 24 + a - INK_BASE + (ringA[c] ? INK_ALL.length + RB_N : 0) : 6 + a + (ringA[c] ? 8 : 0);
         if (mixA[c] && a && a !== HOME_COL) { const mi = mixCi(a, col2A[c], mixA[c], ringA[c]); if (mi >= 0) ci = mi; }
       }
     }

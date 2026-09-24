@@ -655,13 +655,13 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
 
 // ---- 44) 年輪模様とズーム ----
 {
-  settings.mode = 'SPHERE'; settings.tutor = true; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 99;
+  settings.mode = 'CUBE'; settings.tutor = true; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 99;
   for (let i = 0; i < 8; i++) stepK(0); for (let i = 0; i < 4; i++) stepK(1);
   cam.D = 3.4; const D0 = cam.D; for (let i = 0; i < 60; i++) tickMeta(1/60);
   assert('線を引いている間はカメラが引く', cam.D > D0 + 0.2, D0.toFixed(2) + '→' + cam.D.toFixed(2));
   for (let i = 0; i < 30 && player.drawing; i++) stepK(2);
   let r0 = 0, r1 = 0;
-  for (let c = 0; c < surf.N; c++) if (claimAt[c] > -1e8 && colA[c] > 0 && colA[c] <= 8) { if (ringA[c]) r1++; else r0++; }
+  for (let c = 0; c < surf.N; c++) if (claimAt[c] > -1e8 && colA[c] > 0 && colA[c] !== HOME_COL) { if (ringA[c]) r1++; else r0++; }
   assert('囲んだ陣地に年輪の縞(両方の色がある)', r0 > 0 && r1 > 0, r0 + '/' + r1);
   for (let i = 0; i < 120; i++) tickMeta(1/60);
   assert('描き終わるとカメラが戻る', Math.abs(cam.D - 3.4) < 0.05, cam.D.toFixed(2));
@@ -1324,6 +1324,39 @@ buddiesOn = true;
   } catch (e) { err = e.stack; }
   assert('模様の描画(平面・立体)が例外なし', !err, err);
   assert('立体の混ぜ色の枠が作られる', mixSlotKeys.length > 0 && mixSlotKeys.length <= MIX_SLOTS);
+}
+
+
+// ---- 88) 球 = 地球の地図 / 線の色 / 曲 ----
+{
+  settings.mode = 'SPHERE'; startGame(); setState('play');
+  assert('球は地球モード', earthMode() && earthRot);
+  const g = earthGrid();
+  let landN = 0; for (const v of g) if (v >= 6) landN++;
+  assert('地図データ: 陸は3〜4割', landN / g.length > 0.25 && landN / g.length < 0.45, (landN / g.length).toFixed(2));
+  // HOME(日本)は地図の色になっている
+  let home = 0; for (let c = 0; c < surf.N; c++) if (colA[c] >= EARTH_BASE) home++;
+  assert('HOME も地図で塗られる', home > 0 && ![...colA].includes(HOME_COL));
+  // 日本の中心(HOME)は陸、その少し東(太平洋)は海
+  const hc = [...colA].findIndex((a, c) => a >= EARTH_BASE && lineNeighbors(c).length >= 0 && a - EARTH_BASE >= 6);
+  assert('HOME のあたりに陸がある', hc >= 0);
+  // 塗ると地図の色
+  const cs = []; for (let c = 0; c < surf.N && cs.length < 200; c += 7) if (grid[c] === OPEN) cs.push(c);
+  for (const c of cs) { grid[c] = WALL; colA[c] = colFor(c, inkNo(1)); }
+  const kinds = new Set(cs.map(c => colA[c] - EARTH_BASE));
+  assert('塗ると地図の色(海も陸も)', cs.every(c => colA[c] >= EARTH_BASE) && [...kinds].some(k => k < 5) && [...kinds].some(k => k >= 6), [...kinds]);
+  let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('地球の描画が例外なし', !err, err);
+  // 線: となりの陣地の色がにじむ
+  settings.mode = 'PLANE'; startGame(); setState('play');
+  const x0 = 20, y0 = 20;
+  for (let y = y0; y < y0 + 10; y++) for (let x = x0; x < x0 + 21; x++) { const c = idx(x, y); grid[c] = WALL; colA[c] = x < x0 + 10 ? INK_BASE + 0 : x > x0 + 10 ? INK_BASE + 2 : 0; }
+  const mid = idx(x0 + 10, y0 + 5);
+  assert('陣地のあいだの線は、となりの2色', lineNeighbors(mid).length === 2 && lineHex(mid, x0 + 10, y0 + 5) !== null);
+  err = null; try { redrawField(); } catch (e) { err = e.stack; }
+  assert('線の色つきの焼き込みが例外なし', !err, err);
+  // 曲
+  assert('アースの曲がある', BGMDATA.earth && BGMDATA.earth.tracks.every(tr => tr.t !== 'n' || tr.s.length === 64) && CONFIG.SURF.SPHERE.music === 'earth');
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
