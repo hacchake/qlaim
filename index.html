@@ -3906,6 +3906,11 @@ function renderOverlay() {
         ctx.fillText('QIX 2体 ─ 分断で即クリア!', W / 2, y);
         y += 24;
       }
+      if (isZen()) {
+        ctx.fillStyle = '#9dffea';
+        ctx.fillText('ZEN ─ ミスなし・導火線なし。のんびり描こう', W / 2, y);
+        y += 24;
+      }
       if (bonusT > 0) {
         ctx.fillStyle = '#ff9ee8';
         ctx.fillText('BONUS AREA ─ ' + CONFIG.BONUS_TIME + '秒で好きなだけ囲め! 敵はQIXだけ', W / 2, y);
