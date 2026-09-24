@@ -341,7 +341,7 @@ const THEMES = [
     line:'#8d93bd', accent:'#ff8a3d',
     fast:['#ff4fa3','#ff62b3','#f23f98','#ff78c0'],
     slow:['#ff8a1f','#ff9d42','#ff7a0a','#ffae57'],
-    trailF:'#ff62b3', trailS:'#ff9d42', qixHue:[170,250], qixSat0:false },
+    trailF:'#ff62b3', trailS:'#ff9d42', qixHue:[170,250], qixSat0:false, floor3d:'#3d4468' },
   // anim があるテーマは占領色がゆっくり移ろう(hue: 始まりの色相, speed: 度/秒, spread: 色の幅)
   { name:'PRISM', bgOuter:'#1a0f2e', bg:'#05030c', field:'#06040e', hud:'#0a0716',
     line:'#ffffff', accent:'#c49bff', anim:{ hue:200, speed:22, spread:100 },
@@ -1898,7 +1898,8 @@ function buildColors() {
   // 立体面用: [色の種類 × 陰影段階] の色文字列表
   const fld = rgbOf(t.field), acc = rgbOf(t.accent);
   const bases = [
-    mixRgb(fld, acc, 0.30), mixRgb(fld, acc, 0.23),   // 0,1 空き地(市松)
+    // 0,1 空き地(市松)。floor3d があるテーマ(INK)はインクが映える中間色の床
+    t.floor3d ? rgbOf(t.floor3d) : mixRgb(fld, acc, 0.30), t.floor3d ? mixRgb(rgbOf(t.floor3d), [0,0,0], 0.1) : mixRgb(fld, acc, 0.23),
     mixRgb([0,0,0], acc, 0.30),                       // 2 クリア時の封鎖色
     rgbOf(t.line), rgbOf(t.trailF), rgbOf(t.trailS),  // 3 線 / 4,5 軌跡
     mixRgb([0,0,0], acc, 0.42),                       // 6 HOME
@@ -3662,7 +3663,7 @@ function drawBackdrop() {
     ctx.fillRect(x - nb.r, y - nb.r, nb.r * 2, nb.r * 2);
   }
   // ワープ中(カメラが遠い)は星が放射状に流れる
-  const warp = clamp((cam.D - 3.6) / 5, 0, 1);
+  const warp = state === 'ready' ? clamp((cam.D - 3.6) / 5, 0, 1) : 0;   // エリア開始のワープのときだけ
   if (warp > 0.02) {
     ctx.strokeStyle = 'rgba(200,220,255,0.55)'; ctx.lineWidth = 1.2;
     ctx.beginPath();
