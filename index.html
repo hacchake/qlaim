@@ -148,7 +148,8 @@ const CONFIG = {
 
   FUSE_DELAY: 0.5,      // 停止→導火線点火までの猶予(秒)
   FUSE_SPEED: 34,       // 導火線の速度(セル/秒)
-  FUSE_MIN: 10,         // 線がこのマス数より短い間は点火しない(自機のすぐそばに火が出ないように。立体は半分)
+  FUSE_MIN: 10,         // 線がこのマス数より短い間は点火しない(立体は半分)
+  FUSE_MIN_PX: 130,     // 火の出る場所(線の書き始め)が自機からこのピクセル以内なら点火しない
 
   /* -- ゲーム進行 ---------------------------------------------- */
   LIVES: 3,             // 残機の既定値(OPTIONSで変更可)
@@ -3321,12 +3322,18 @@ function checkExtend() {
 function fuseReset() { fuse.wait = 0; fuse.pos = 0; fuse.lit = false; fuse.sndT = 0; fuse.said = false; }
 function effFuseDelay() { return CONFIG.FUSE_DELAY * diff().fuse; }
 function fuseMin() { return surf.is3D ? CONFIG.FUSE_MIN / 2 : CONFIG.FUSE_MIN; }
+// 火の出る場所が自機から十分離れているか(マス数と画面上の距離の両方)
+function fuseFar() {
+  if (trail.length < fuseMin()) return false;
+  const a = surf.screenOf(trail[0]), b = surf.screenOf(player.c);
+  return Math.hypot(a.x - b.x, a.y - b.y) >= CONFIG.FUSE_MIN_PX;
+}
 
 function updateFuse(dt, stepped) {
   if (!player.drawing || trail.length === 0 || isZen()) return;
   if (stepped) { fuse.wait = 0; return; } // 動いている間は進まない(点火状態は維持)
   // 線が短い = 書き始め(火が出る場所)が自機のすぐそば。そこでは点火しない
-  if (!fuse.lit && trail.length < fuseMin()) { fuse.wait = 0; return; }
+  if (!fuse.lit && !fuseFar()) { fuse.wait = 0; return; }
   fuse.wait += dt;
   if (fuse.wait >= effFuseDelay()) {
     fuse.lit = true;
@@ -3570,10 +3577,12 @@ function startClear(split) {
   sayLine('clear', 2.5, true);
 }
 
-// コンティニュー: 同じエリアの最初から、残機を戻して続ける(スコアはそのまま)
+// コンティニュー: 同じエリアの最初から、残機を戻して続ける(スコアは0から。ハイスコアが積み上がらないように)
 function canContinue() { return state === 'over' && stTimer < CONFIG.CONTINUE_TIME; }
 function continueGame() {
   continues++;
+  saveHi();
+  score = 0;
   lives = settings.lives;
   player.shield = false;
   initLevel(level);

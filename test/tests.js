@@ -28,8 +28,8 @@ held.fast = false;
 m = steps(0, -1, 1);
 assert('方向キーだけで空き地へ進むと遅い線(×2)を引き始める', m === 1 && player.drawing && !player.usedFast);
 held.fast = true;
-m = steps(0, -1, 19);
-assert('Zを押すと速い線(×1)になる', m === 19 && trail.length === 20 && player.usedFast, m + '/' + trail.length);
+m = steps(0, -1, 29);
+assert('Zを押すと速い線(×1)になる', m === 29 && trail.length === 30 && player.usedFast, m + '/' + trail.length);
 for (let i = 0; i < 120 && deathTimer <= 0; i++) updateFuse(1/30, false);
 assert('導火線点火', fuse.lit);
 assert('導火線でミス発生', deathTimer > 0, deathTimer.toFixed(2));
@@ -616,7 +616,7 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   lives = 0; player.invuln = 0; death(); for (let i = 0; i < 60 && deathTimer > 0; i++) update(1/30);
   assert('ゲームオーバーでコンティニュー受付', state === 'over' && canContinue());
   stTimer = 1; onAction();
-  assert('Zで同じエリアから続ける(残機回復・スコア維持)', state === 'ready' && level === 5 && lives === settings.lives && score === 1234 && continues === 1);
+  assert('Zで同じエリアから続ける(残機回復・スコアは0から)', state === 'ready' && level === 5 && lives === settings.lives && score === 0 && continues === 1);
   setState('play'); lives = 0; player.invuln = 0; death(); for (let i = 0; i < 60 && deathTimer > 0; i++) update(1/30);
   stTimer = 1; giveUp();
   assert('Xでやめるとカウントダウン終了', !canContinue());
@@ -1195,10 +1195,22 @@ buddiesOn = true;
   fuseReset(); player.drawing = true; trail = [0, 1, 2];
   for (let i = 0; i < 120; i++) updateFuse(1 / 60, false);
   assert('3マスの線では点火しない', !fuse.lit);
-  trail = Array.from({ length: CONFIG.FUSE_MIN + 2 }, (_, i) => i);
+  // 線は長くても、書き始めが自機のすぐそばなら点火しない(平面1マス=5px)
+  trail = Array.from({ length: 40 }, (_, i) => i); player.c = GW;
   for (let i = 0; i < 60; i++) updateFuse(1 / 60, false);
-  assert('長い線なら点火する', fuse.lit);
+  assert('書き始めが画面上で近いと点火しない', !fuse.lit);
+  trail = Array.from({ length: 40 }, (_, i) => i); player.c = 60;
+  for (let i = 0; i < 60; i++) updateFuse(1 / 60, false);
+  assert('書き始めが離れていれば点火する', fuse.lit);
   fuseReset(); player.drawing = false; trail = [];
+}
+
+
+// ---- 84) コンティニューするとスコアは0から(ハイスコアは残る) ----
+{
+  settings.mode = 'PLANE'; startGame(); score = 123456; saveHi(); setState('over'); stTimer = 0;
+  continueGame();
+  assert('コンティニューでスコア0', score === 0 && hiScore >= 123456, score + ' / ' + hiScore);
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

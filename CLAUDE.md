@@ -39,7 +39,7 @@ node test/run-tests.js
 8. カメラ(`cam`・`camFollow`・`camRotate`): 立体面で自機を画面中央に追い、格子が画面の縦横にそろうよう傾きも補正
 9. ゲーム状態・フィールド(`grid`: OPEN/WALL/TRAIL、`colA`: 0=線 1..8=占領色 9=HOME)、`claimFill`、`visitedFrom`
    `claimAt` — 塗りの波(各セルに波が届く時刻。`markClaim`)
-10. プレイヤー(`chooseMove`→`playerStep`)・`closeTrail`(QIX分断→即クリア)・導火線(線が `FUSE_MIN` マスより短い間は点火しない)・QIX・SPARX
+10. プレイヤー(`chooseMove`→`playerStep`)・`closeTrail`(QIX分断→即クリア)・導火線(線が `FUSE_MIN` マス未満か、書き始めが自機から `FUSE_MIN_PX` 以内なら点火しない)・QIX・SPARX
 11. 進行: 状態は title / options / ready / play / pause / clear / over
 12. 描画: `render2D` / `render3D`(へこみのある形は奥行きを層に分けて奥から) / `drawBackdrop`(星雲・星)
     `drawTrailGlow` / `drawClawd`(自機のドット絵) / `renderHUD` / `renderOverlay`、入力
