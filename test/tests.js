@@ -652,5 +652,20 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('Zで戻る', state === 'options');
 }
 
+
+// ---- 44) 年輪模様とズーム ----
+{
+  settings.mode = 'SPHERE'; settings.tutor = true; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 99;
+  for (let i = 0; i < 8; i++) stepK(0); for (let i = 0; i < 4; i++) stepK(1);
+  const D0 = cam.D; for (let i = 0; i < 60; i++) tickMeta(1/60);
+  assert('線を引いている間はカメラが引く', cam.D > D0 + 0.2, D0.toFixed(2) + '→' + cam.D.toFixed(2));
+  for (let i = 0; i < 30 && player.drawing; i++) stepK(2);
+  let r0 = 0, r1 = 0;
+  for (let c = 0; c < surf.N; c++) if (claimAt[c] > -1e8 && colA[c] > 0 && colA[c] <= 8) { if (ringA[c]) r1++; else r0++; }
+  assert('囲んだ陣地に年輪の縞(両方の色がある)', r0 > 0 && r1 > 0, r0 + '/' + r1);
+  for (let i = 0; i < 120; i++) tickMeta(1/60);
+  assert('描き終わるとカメラが戻る', Math.abs(cam.D - 3.4) < 0.05, cam.D.toFixed(2));
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

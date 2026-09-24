@@ -1491,6 +1491,9 @@ function camFollow(c, dt) {
 }
 function updateCamera(dt) {
   if (!surf.is3D) return;
+  // 線を引いている間は少し引いて、まわりを見やすく
+  const wantD = state === 'play' && player.drawing ? 3.95 : 3.4;
+  cam.D += (wantD - cam.D) * (1 - Math.exp(-dt * 2.5));
   if (state === 'play' || state === 'ready') camFollow(player.c, dt);
   else if (state !== 'pause') camRotate([0.25, 1, 0], dt * 0.35); // タイトル等ではゆっくり回る
 }
@@ -1510,6 +1513,7 @@ let optSel = 0;                 // OPTIONS選択行
 let homeCell = -1;              // SPARXの出現セル
 // 塗りの波: 囲んだ瞬間、閉じた場所から波紋のように色が広がる
 let claimAt = new Float32Array(0), waveFrom = 0, waveUntil = 0;
+let ringA = new Uint8Array(0);  // 年輪模様: 占領したときの「閉じた場所からの距離」の縞(0/1)
 let rings = [];                 // 囲んだ瞬間の光の輪
 let items = [], itemTimer = 0;  // アイテム { c:セル, k:種類, t:経過秒 }
 let seekers = [];               // SEEKER { c:セル, prev, acc, ph }
@@ -1584,7 +1588,7 @@ function tickTheme(dt) {
 function buildColors() {
   const t = theme();
   themePal = themePalette(t);
-  themePalD = themePal.map(c => shade(c, 0.80)); // ディザ用の暗色
+  themePalD = themePal.map(c => shade(c, 0.68)); // 年輪模様の暗いほう
   // 立体面用: [色の種類 × 陰影段階] の色文字列表
   const fld = rgbOf(t.field), acc = rgbOf(t.accent);
   const bases = [
@@ -1592,7 +1596,7 @@ function buildColors() {
     mixRgb([0,0,0], acc, 0.30),                       // 2 クリア時の封鎖色
     rgbOf(t.line), rgbOf(t.trailF), rgbOf(t.trailS),  // 3 線 / 4,5 軌跡
     mixRgb([0,0,0], acc, 0.42),                       // 6 HOME
-  ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.8)),
+  ].concat(themePal.map(rgbOf), themePal.map(c => mixRgb([0,0,0], rgbOf(c), 0.66)),
            [mixRgb([255,255,255], acc, 0.25)]);            // 23 塗りの波が通った瞬間の光
   col3D = [];
   bases.forEach((b, ci) => {
@@ -1629,6 +1633,7 @@ function initLevel(lv) {
   grid = new Uint8Array(surf.N);
   colA = new Uint8Array(surf.N);
   claimAt = new Float32Array(surf.N).fill(-1e9);
+  ringA = new Uint8Array(surf.N);
   waveUntil = 0; rings = [];
   items = []; itemTimer = CONFIG.ITEM_INTERVAL * 0.6;
   seekers = [];
@@ -1674,7 +1679,7 @@ function redrawField() {
       const i = idx(x, y);
       if (grid[i] === WALL) {
         const c = colA[i];
-        fctx.fillStyle = c ? ((x + y) & 1 ? themePalD[c - 1] : themePal[c - 1]) : t.line;
+        fctx.fillStyle = c ? (ringA[i] ? themePalD[c - 1] : themePal[c - 1]) : t.line;
         fctx.fillRect(x * CS, y * CS, CS, CS);
       }
     }
@@ -1734,6 +1739,7 @@ function markClaim(i) {
   const d = Math.hypot(P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]);
   const t = blinkT + d * (surf.is3D ? 0.45 : 0.006);
   claimAt[i] = t;
+  ringA[i] = Math.floor(d * (surf.is3D ? 9 : 0.28)) & 1;      // 同心円の縞
   if (t + 0.35 > waveUntil) waveUntil = t + 0.35;
 }
 
@@ -2908,7 +2914,7 @@ function render3D(t) {
       const ca = claimAt[c];
       if (ca > now) ci = par[c];                    // 塗りの波がまだ届いていない
       else if (now - ca < 0.3) ci = FLASH_CI;       // 波が通った瞬間に光る
-      else { const a = colA[c]; ci = a === 0 ? 3 : a === HOME_COL ? 6 : 6 + a + (par[c] ? 8 : 0); }
+      else { const a = colA[c]; ci = a === 0 ? 3 : a === HOME_COL ? 6 : 6 + a + (ringA[c] ? 8 : 0); }
     }
     let lit = nx * lx + ny * ly + nz * lz;
     if (S.twoSided) lit = 0.35 + 0.65 * Math.abs(lit);
