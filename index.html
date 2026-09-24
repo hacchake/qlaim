@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>QLAIM ─ 陣取りアーケード</title>
+<meta name="description" content="Qix風の陣取りアーケード。平面・多面体・星型・メビウスの帯・クラインの壺の表面で線を引いて陣地を広げよう。">
+<meta property="og:title" content="QLAIM ─ 陣取りアーケード">
+<meta property="og:description" content="多面体やクラインの壺の表面で陣取り。ブラウザだけで遊べます。">
+<meta name="theme-color" content="#05060d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 10' shape-rendering='crispEdges'><rect x='2' y='0' width='9' height='7' fill='%23d97757'/><rect x='0' y='3' width='2' height='2' fill='%23d97757'/><rect x='11' y='3' width='2' height='2' fill='%23d97757'/><rect x='3' y='7' width='1' height='2' fill='%23d97757'/><rect x='5' y='7' width='1' height='2' fill='%23d97757'/><rect x='7' y='7' width='1' height='2' fill='%23d97757'/><rect x='9' y='7' width='1' height='2' fill='%23d97757'/><rect x='4' y='1' width='1' height='2' fill='%231d1411'/><rect x='8' y='1' width='1' height='2' fill='%231d1411'/></svg>">
 <style>
   html,body{
     margin:0; padding:0; height:100%;
@@ -1529,6 +1536,17 @@ let areaTime = 0;               // このエリアの経過時間
 let pauseSel = 0;               // ポーズメニューの選択行
 let continues = 0;              // このゲームでコンティニューした回数
 let demoT = 0, demoLv = 1;      // タイトルのデモ: 背景の盤面を巡らせる
+// 自動軽量化: プレイ中に重い(1フレーム28ms超が続く)ときは発光を切る。設定は保存しない
+const perf = { avg: 1 / 60, slowT: 0, lite: false };
+function watchPerf(rawDt) {
+  if (state !== 'play' || perf.lite || !settings.glow) { perf.slowT = 0; return; }
+  perf.avg += (rawDt - perf.avg) * 0.05;
+  perf.slowT = perf.avg > 0.028 ? perf.slowT + rawDt : 0;
+  if (perf.slowT > 2.5) {
+    perf.lite = true;               // settings.glow はそのまま(次に開いたときは元どおり)
+    floats.push({ x: W / 2, y: FIELD_Y + 70, txt: '処理が重いので 発光をOFFにしました', t: 2.5, col: '#cdd8ff' });
+  }
+}
 let areaMiss = 0, areaFast = false;   // このエリアでのミス数 / Zを使ったか(実績用)
 /* チュートリアル: 初めての1ゲームだけ、やることを順に教える
    0:歩く → 1:空き地へ出て線を引く → 2:線につないで囲む → 3:クリア条件(数秒で終わり)
@@ -2732,7 +2750,7 @@ function render() {
   renderOverlay();
   drawToast(t);
   ctx.restore();
-  if (settings.glow) drawBloom();
+  if (settings.glow && !perf.lite) drawBloom();
 }
 
 // 発光: 画面を小さく縮めて(ぼかして)から、加算合成で重ねる
@@ -3438,6 +3456,7 @@ function loop(now) {
   requestAnimationFrame(loop);
   let dt = (now - last) / 1000;
   last = now;
+  watchPerf(dt);
   if (dt > 0.05) dt = 0.05;
   blinkT += dt;
   stTimer += dt;

@@ -680,5 +680,17 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('単独の盤面を選んでいるときは巡らない', surf.key === 'CUBE');
 }
 
+
+// ---- 46) 自動軽量化 ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); settings.glow = true; perf.lite = false; perf.avg = 1 / 60;
+  for (let i = 0; i < 200; i++) watchPerf(1 / 60);
+  assert('軽いときは発光のまま', settings.glow === true);
+  for (let i = 0; i < 200; i++) watchPerf(0.05);
+  assert('重い状態が続くと発光を自動でOFF(設定は変えない)', settings.glow === true && perf.lite);
+  perf.lite = false;
+  settings.glow = true;
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
