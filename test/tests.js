@@ -1073,7 +1073,7 @@ buddiesOn = true;
   // 登場順: 9エリアで18種全員
   const all = new Set(); for (let lv = 1; lv <= 9; lv++) buddiesFor(lv).forEach(k => all.add(k));
   assert('9エリアで18種全員が登場する', all.size === 18 && Object.keys(BUDDIES).length === 18, all.size);
-  const mk = (k, lv) => { settings.mode = 'PLANE'; startGame(); level = lv || 1; initLevel(level); setState('play'); buddies = []; fireballs = []; sparxes = []; seekers = []; return spawnBuddy(k); };
+  const mk = (k, lv) => { settings.mode = 'PLANE'; startGame(); level = lv || 1; initLevel(level); setState('play'); buddies = []; fireballs = []; sparxes = []; seekers = []; const b = spawnBuddy(k); b.shiny = false; return b; };
   // 味方: 囲んで助ける
   let b = mk('axolotl'); player.invuln = 99; held.fast = false;
   const x0 = player.c % GW; b.c = idx(x0 - 2, GH - 3); const l0 = lives;
@@ -1245,7 +1245,7 @@ buddiesOn = true;
   // 虹: セルごとに帯の色
   ink.rainbowT = 5;
   assert('虹のときは -1(セルごと)', inkNo(1) === -1);
-  const bins = new Set(); for (let c = 0; c < GW * 20; c += 7) bins.add(colFor(c, -1));
+  const bins = new Set(); for (let c = 0; c < surf.N; c += 13) bins.add(colFor(c, -1));
   assert('虹: いくつもの色の帯になる', bins.size >= 6 && [...bins].every(v => v >= RB_BASE && v < RB_BASE + RB_N), bins.size);
   ink.rainbowT = 0;
   // 固定色(ネット対戦用の「自分の色」)
@@ -1275,6 +1275,19 @@ buddiesOn = true;
   ink.rainbowT = 0; const i0 = ink.i, c2 = idx(60, 30);
   items.push({ c: c2, k: 'paint', t: 0 }); grid[c2] = WALL; collectItems();
   assert('PAINTアイテムでインクの色が変わる', ink.i !== i0);
+}
+
+
+// ---- 86) ミスの原因が出る・方向キーを押している間は導火線が燃えない ----
+{
+  settings.mode = 'PLANE'; startGame(); setState('play'); player.invuln = 0; deathTimer = 0;
+  floats.length = 0; death('テスト');
+  assert('ミスの原因を表示', lastDeath === 'テスト' && floats.some(f => f.txt === 'ミス: テスト'));
+  deathTimer = 0; player.invuln = 0;
+  fuseReset(); player.drawing = true; trail = Array.from({ length: 60 }, (_, i) => i); player.c = 70;
+  for (let i = 0; i < 120; i++) updateFuse(1 / 60, true);   // 押しているが進めない
+  assert('方向キーを押している間は点火しない', !fuse.lit);
+  fuseReset(); player.drawing = false; trail = [];
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

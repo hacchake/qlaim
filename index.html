@@ -2447,7 +2447,7 @@ function updateSeekers(dt) {
     while (k.acc >= 1) {
       k.acc -= 1;
       stepSeeker(k);
-      if (grid[k.c] === TRAIL || (player.drawing && k.c === player.c)) { death(); return; }
+      if (grid[k.c] === TRAIL || (player.drawing && k.c === player.c)) { death('オイカケにつかまった'); return; }
     }
   }
 }
@@ -2738,7 +2738,7 @@ function moveOpen(b, dt, spd, mode) {
     } else if (cands.includes(straight) && Math.random() < (mode === 'straight' ? 0.97 : 0.8)) next = straight;
     else { const o = cands.filter(n => n !== b.prev); next = pick(o.length ? o : cands); }
     b.prev = c; b.c = next;
-    if (harmful(bRole(b)) && hitsTrail(b.c)) { death(); return; }
+    if (harmful(bRole(b)) && hitsTrail(b.c)) { death(BUDDIES[b.k].nick + 'が線にさわった'); return; }
   }
 }
 function hitsTrail(c) { return grid[c] === TRAIL || (player.drawing && c === player.c); }
@@ -2787,7 +2787,7 @@ function updateBuddies(dt) {
             if (n < 0 || grid[n] === WALL) break;
             const kp = nbIndex(n, c);
             b.prev = c; c = n; b.c = c; b.jump = 0.25;
-            if (hitsTrail(c)) { death(); return; }
+            if (hitsTrail(c)) { death(BUDDIES[b.k].nick + 'が線にとびのった'); return; }
             if (kp >= 0) k = (kp + 2) & 3;
           }
         }
@@ -2801,7 +2801,7 @@ function updateBuddies(dt) {
         const cand = [0, 1, 2, 3].map(k => surf.nb[b.c * 4 + k]).filter(n => n >= 0);
         const next = st >= 0 && Math.random() < 0.85 ? st : pick(cand);
         b.prev = b.c; b.c = next;
-        if (hitsTrail(b.c)) { death(); return; }
+        if (hitsTrail(b.c)) { death(BUDDIES[b.k].nick + 'がすべってきた'); return; }
       }
     } else if (role === 'squirt') {
       moveOpen(b, dt, 1.5 * sp, 'wander');
@@ -2825,7 +2825,7 @@ function updateBuddies(dt) {
       b.warn = b.cd < 1.2;
       if (b.cd <= 0) { b.cd = rand(5, 7); breathe(b); buddySay(b, 'act', true); }
     }
-    if (harmful(role) && hitsTrail(b.c)) { death(); return; }
+    if (harmful(role) && hitsTrail(b.c)) { death(BUDDIES[b.k].nick + 'が線にさわった'); return; }
   }
   updateFireballs(dt);
 }
@@ -2865,14 +2865,14 @@ function breathe(b) {
 }
 function updateFireballs(dt) {
   for (const f of fireballs.slice()) {
-    if (hitsTrail(f.c)) { death(); fireballs.length = 0; return; }
+    if (hitsTrail(f.c)) { death('ドラゴンの火の玉'); fireballs.length = 0; return; }
     f.acc += dt * 16 * surf.def.speed * enemySlow();
     while (f.acc >= 1) {
       f.acc -= 1;
       const kp = nbIndex(f.c, f.prev), n = kp >= 0 ? surf.nb[f.c * 4 + ((kp + 2) & 3)] : -1;
       if (n < 0 || grid[n] === WALL || ++f.n > 90) { fireballs.splice(fireballs.indexOf(f), 1); break; }
       f.prev = f.c; f.c = n;
-      if (hitsTrail(f.c)) { death(); fireballs.length = 0; return; }
+      if (hitsTrail(f.c)) { death('ドラゴンの火の玉'); fireballs.length = 0; return; }
     }
   }
 }
@@ -3418,7 +3418,7 @@ function fuseFar() {
 
 function updateFuse(dt, stepped) {
   if (!player.drawing || trail.length === 0 || isZen()) return;
-  if (stepped) { fuse.wait = 0; return; } // 動いている間は進まない(点火状態は維持)
+  if (stepped) { fuse.wait = 0; return; } // 動いている間(方向キーを押している間)は進まない(点火状態は維持)
   // 線が短い = 書き始め(火が出る場所)が自機のすぐそば。そこでは点火しない
   if (!fuse.lit && !fuseFar()) { fuse.wait = 0; return; }
   fuse.wait += dt;
@@ -3428,7 +3428,7 @@ function updateFuse(dt, stepped) {
     fuse.sndT -= dt;
     if (fuse.sndT <= 0) { Snd.fuseCr(); fuse.sndT = 0.07; }
     if (!fuse.said) { fuse.said = true; sayLine('fuse', 1.2); }
-    if (fuse.pos >= trail.length) death();
+    if (fuse.pos >= trail.length) death('導火線の火に追いつかれた');
   }
 }
 
@@ -3460,10 +3460,10 @@ function updateQix(q, dt) {
   }
   // 当たり判定: 体(クラゲのかさ)が描きかけの線や描いている自機に触れてもミス
   if (!q.segs.length || state !== 'play') return;
-  if (qixBodyHits(q)) { death(); return; }
+  if (qixBodyHits(q)) { death('ヌメリンの体が線に当たった'); return; }
   let close = false;
   const hit = surf.segEach(q.segs[q.segs.length - 1], c => {
-    if (grid[c] === TRAIL || (player.drawing && c === player.c)) { death(); return true; }
+    if (grid[c] === TRAIL || (player.drawing && c === player.c)) { death('ヌメリンの腕が線に当たった'); return true; }
     // ニアミス: 描きかけの線のすぐ隣をかすめた
     if (player.drawing && !close) for (let k = 0; k < 4; k++) { const n = surf.nb[c * 4 + k]; if (n >= 0 && grid[n] === TRAIL) { close = true; break; } }
     return false;
@@ -3566,15 +3566,16 @@ function updateSparxes(dt) {
     while (s.acc >= 1) {
       s.acc -= 1;
       stepSparx(s);
-      if (s.c === player.c && player.invuln <= 0) { death(); return; }
+      if (s.c === player.c && player.invuln <= 0) { death('バチッコにぶつかった'); return; }
     }
-    if (s.c === player.c && player.invuln <= 0) { death(); return; }
+    if (s.c === player.c && player.invuln <= 0) { death('バチッコにぶつかった'); return; }
   }
 }
 
 /* ---------------- ミス処理 ---------------- */
-function death() {
+function death(why) {
   if (player.invuln > 0 || deathTimer > 0 || isZen()) return;
+  lastDeath = why || '';
   guarded = player.shield;     // SHIELD があれば残機は減らない(線は消える)
   buzz(guarded ? 80 : 200, guarded ? 0.4 : 1);
   sayLine(guarded ? 'guard' : 'miss', 1.1, true);
@@ -3585,7 +3586,10 @@ function death() {
   Snd.death();
   const p = surf.screenOf(player.c);
   spawnParticles(p.x, p.y, 30, '#ff5c8a');
+  // 何でミスしたかを出す(いきなりのミスでも原因がわかるように)
+  if (why) floats.push({ x: W / 2, y: FIELD_Y + 150, txt: 'ミス: ' + why, t: 2.2, col: '#ff8fa8', big: true });
 }
+let lastDeath = '';
 
 // 描きかけの線を取り消して描き始めの場所へ戻る(残機は減らない)
 function cancelTrail() {
@@ -3971,7 +3975,7 @@ function update(dt) {
   }
   if (state !== 'play') return;
 
-  updateFuse(dt, stepped);
+  updateFuse(dt, stepped || !!d);
   if (deathTimer > 0) { updateParticles(dt); updateFloats(dt); return; }
 
   updateQixes(dt);
