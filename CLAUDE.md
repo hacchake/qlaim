@@ -68,6 +68,19 @@ node test/run-tests.js
 - BONUS AREA: `isBonus` / `bonusT`(5エリアごと)、`cancelTrail`
 - 曲: synth / lofi を追加。`swing` で裏拍を遅らせる
 - テスト用スタブ(test/shim.js)に Path2D と measureText を追加済み
+- Clawdの色: `CLAWD_SKINS` / `skinsOpen` / `clawdCol`(実績で解除)
+- 全体を見る: X(held.slow)を押す間 `updateCamera` がカメラを引く。スマホは「全体」ボタン
+- ZEN: `isZen()`(ミス・導火線・SPARX/SEEKER・記録なし)
+- あそんだ記録: `stats` / `saveStats` / `favSurface`、画面は state 'stats'
+- QIXのリボン: `drawQixRibbons` / `qixEnds`
+- OPTIONSはポーズからも開ける(`optsFrom`)
+- ワープ入場: 立体面のエリア開始時 `cam.D = 9` から寄る。状態を先に切り替えてから `initLevel` すること
+- 花火 `updateFireworks`、効果音のハモり `Bgm.root()`、クリア音 `Snd.clear_(root)`
+- スマホ横向きレイアウト: CSS の landscape メディアクエリと `isLandscapeTouch` / `fitCanvas`
+- テーマAUTO: `settings.theme === THEMES.length`、`AUTO_THEME` の対応表
+- 結果の共有: `resultText` / `shareResult`(ゲームオーバー画面、Sキー)
+- QIXの突進: `QIX_DASH_FROM`、各盤面の `qixAim`
+- Clawdのひとこと: `say` / `speech` / `drawSpeech`
 
 ## 操作
 - 方向キーで空き地へ進むと、ボタン無しでゆっくり線を引く(×2点)。Z/スペースを押している間だけ速い(×1点)。
