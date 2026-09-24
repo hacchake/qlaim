@@ -957,5 +957,16 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('Zで2周目(AREA 23 = 平面から)', state === 'ready' && level === CONFIG.TOUR.length + 1 && surf.key === 'PLANE', level + ' ' + surf.key);
 }
 
+
+// ---- 69) RAINBOW ----
+{
+  achvGot.tourall = 'x'; settings.skin = 'RAINBOW';
+  const a = clawdCol(); blinkT += 0.5; const b = clawdCol();
+  assert('RAINBOWは色が変わり続ける', /^#[0-9a-f]{6}$/.test(a) && a !== b, a + ' ' + b);
+  delete achvGot.tourall;
+  assert('未解除ならオレンジ', clawdCol() === CLAWD_COL);
+  settings.skin = 'ORANGE';
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

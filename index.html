@@ -2842,9 +2842,14 @@ const CLAWD_SKINS = [
   { name:'PURPLE', col:'#b58cff', need:'seeker' },
   { name:'GHOST',  col:'#e8ecff', need:'klein' },
   { name:'GOLD',   col:'#ffcc33', need:'all' },
+  { name:'RAINBOW', col:null,     need:'tourall' },   // 色が虹のように変わり続ける
 ];
 function skinsOpen() { return CLAWD_SKINS.filter(k => !k.need || achvGot[k.need]); }
-function clawdCol() { const k = skinsOpen().find(k => k.name === settings.skin); return k ? k.col : CLAWD_COL; }
+function clawdCol() {
+  const k = skinsOpen().find(k => k.name === settings.skin);
+  if (k && !k.col) return hslHex(blinkT * 120, 85, 62);
+  return k ? k.col : CLAWD_COL;
+}
 function drawClawd(cx, cy, s, o) {
   o = o || {};
   const x0 = cx - 6.5 * s, y0 = cy - 4.5 * s - (o.moving && o.walkF ? s : 0);
