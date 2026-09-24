@@ -739,5 +739,15 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('OPTIONS描画が例外なし', !err, err);
 }
 
+
+// ---- 51) 全体を見る(X) ----
+{
+  settings.mode = 'DODECA'; startGame(); stTimer = 2; tickMeta(0.016);
+  held.slow = true; for (let i = 0; i < 120; i++) tickMeta(1/60);
+  assert('Xを押す間はカメラが大きく引く', cam.D > 5, cam.D.toFixed(2));
+  held.slow = false; for (let i = 0; i < 180; i++) tickMeta(1/60);
+  assert('離すと戻る', Math.abs(cam.D - 3.4) < 0.05, cam.D.toFixed(2));
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

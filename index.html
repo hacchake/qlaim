@@ -54,6 +54,7 @@
   #acts{ display:flex; gap:14px; }
   .ab{ width:76px; height:76px; border-radius:50%; font-size:14px; line-height:1.2; }
   #b-fast{ border-color:#2e86ab; color:#a8e4ff; }
+  #b-view{ border-color:#6a4aa8; color:#d8c4ff; width:60px; height:60px; }
   .ab small{ font-size:10px; opacity:.8; }
 </style>
 </head>
@@ -67,6 +68,7 @@
       <button class="pb ghost"></button><button class="pb" id="b-down">▼</button><button class="pb ghost"></button>
     </div>
     <div id="acts">
+      <button class="ab" id="b-view">全体<br><small>みる</small></button>
       <button class="ab" id="b-fast">FAST<br><small>×1点</small></button>
     </div>
   </div>
@@ -1548,7 +1550,8 @@ function camFollow(c, dt) {
 function updateCamera(dt) {
   if (!surf.is3D) return;
   // 線を引いている間は少し引いて、まわりを見やすく
-  const wantD = state === 'play' && player.drawing ? 3.95 : 3.4;
+  // X(held.slow)を押している間は大きく引いて全体を見渡す
+  const wantD = (state === 'play' || state === 'ready') && held.slow ? 5.3 : state === 'play' && player.drawing ? 3.95 : 3.4;
   cam.D += (wantD - cam.D) * (1 - Math.exp(-dt * 2.5));
   if (state === 'play' || state === 'ready') camFollow(player.c, dt);
   else if (state !== 'pause') camRotate([0.25, 1, 0], dt * 0.35); // タイトル等ではゆっくり回る
@@ -3264,7 +3267,7 @@ function renderOverlay() {
       'アイテム S ◆ ★ ♥ は線で囲むと手に入る',
       '多面体・星型・クラインの壺の表面でも陣取り',
       'AREA 3 からは QIX 2体 ── 分断で即クリア',
-      'QIX・SPARX・導火線に注意',
+      'X を押す間は カメラが引いて全体が見える',
     ];
     lines.forEach((s, i) => ctx.fillText(s, W / 2, 296 + i * 24));
 
@@ -3722,6 +3725,7 @@ function bindHold(id, down, up) {
     pressDir(d);
   }, () => releaseDir(d));
 });
+bindHold('b-view', () => { held.slow = true; }, () => { held.slow = false; });
 bindHold('b-fast', () => {
   held.fast = true;
   if (state !== 'play' && state !== 'ready' && state !== 'pause' && state !== 'options') onAction();
