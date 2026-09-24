@@ -780,6 +780,7 @@ const ACHV = [
   { id:'buddyall', name:'総出演',         txt:'18種のbuddy全員に会う' },
   { id:'rescue5',  name:'たすけあい',     txt:'迷子のbuddyを5回たすける' },
   { id:'shiny',    name:'色違い',         txt:'色違いのbuddyに会う' },
+  { id:'world',    name:'世界一周',       txt:'球(地球)で7つの大陸をすべて見つける' },
 ];
 const achvGot = store.get('qlaim.ach', {});
 const itemsGot = store.get('qlaim.items', {});      // これまでに取ったアイテムの種類
@@ -1991,7 +1992,11 @@ function camFollow(c, dt) {
   const roll = Math.round(phi / Q) * Q - phi;
   if (Math.abs(roll) > 1e-4) camRotate([0, 0, 1], roll * (1 - Math.exp(-dt * 3)));
 }
+function tickArt() {
+  if (state === 'clear' && !artSaved && stTimer > 1.0 && !isZen()) captureArt();
+}
 function updateCamera(dt) {
+  tickArt();
   if (!surf.is3D) return;
   // 線を引いている間は少し引いて、まわりを見やすく(READY中は速めに寄ってワープ感)
   // X(held.slow)を押している間は大きく引いて全体を見渡す
@@ -2186,13 +2191,58 @@ function setupEarth() {
   }
   for (let c = 0; c < surf.N; c++) if (colA[c] === HOME_COL) colA[c] = EARTH_BASE + earthIdx(c);
 }
-function earthIdx(c) {
+// セルの緯度・経度(度)
+function earthLL(c) {
   const P = surf.pos, R = earthRot || [1, 0, 0, 0, 1, 0, 0, 0, 1];
   const x = P[c * 3], y = P[c * 3 + 1], z = P[c * 3 + 2], l = Math.hypot(x, y, z) || 1;
   const ex = (R[0] * x + R[1] * y + R[2] * z) / l, ey = (R[3] * x + R[4] * y + R[5] * z) / l, ez = (R[6] * x + R[7] * y + R[8] * z) / l;
-  const lat = Math.asin(clamp(ey, -1, 1)) * 180 / Math.PI, lon = Math.atan2(ex, ez) * 180 / Math.PI;
+  return [Math.asin(clamp(ey, -1, 1)) * 180 / Math.PI, Math.atan2(ex, ez) * 180 / Math.PI];
+}
+function earthIdx(c) {
+  const [lat, lon] = earthLL(c);
   const px = clamp(Math.floor((lon + 180) / 2), 0, 179), py = clamp(Math.floor((90 - lat) / 2), 0, 89);
   return earthGrid()[py * 180 + px];
+}
+// 大陸(陸のセルだけ)。緯度・経度のおおまかな範囲で分ける
+const CONTINENTS = ['アジア', 'ヨーロッパ', 'アフリカ', '北アメリカ', '南アメリカ', 'オセアニア', '南極'];
+function continentOf(lat, lon) {
+  if (lat < -60) return 6;
+  if (lon >= -82 && lon <= -34 && lat >= -56 && lat < 13) return 4;
+  if ((lon >= -170 && lon <= -52 && lat >= 7) || (lon > -75 && lon <= -10 && lat >= 59)) return 3;
+  if (lon >= 110 && lat <= -10 && lat >= -50) return 5;
+  if (lon >= 130 && lon <= 180 && lat > -11 && lat <= 0) return 5;
+  if (lon >= -25 && lon <= 45 && lat >= 36) return 1;
+  if (lon >= -18 && lon <= 52 && lat >= -36 && lat < 37 && !(lon > 34 && lat > 12)) return 2;
+  return 0;
+}
+// 囲んだ陸から、はじめて見つけた大陸を知らせる(1エリアごと。全部見つけた記録は保存)
+let earthFound = new Set();
+const worldSeen = store.get('qlaim.continents', {});
+function discoverContinents(cells) {
+  if (!earthMode()) return [];
+  const cnt = new Array(CONTINENTS.length).fill(0);
+  for (const c of cells) if (earthIdx(c) >= 6) { const [la, lo] = earthLL(c); cnt[continentOf(la, lo)]++; }
+  const found = [];
+  cnt.forEach((n, i) => {
+    if (n >= 3 && !earthFound.has(i)) {
+      earthFound.add(i); found.push(i);
+      if (!worldSeen[i]) { worldSeen[i] = todayStr(); store.set('qlaim.continents', worldSeen); }
+    }
+  });
+  if (CONTINENTS.every((_, i) => worldSeen[i])) unlock('world');
+  return found;
+}
+// 大気の光: 球のまわりにうっすら青いふち(地球だけ)
+function drawAtmosphere() {
+  if (!earthMode()) return;
+  const R = cam.R, o = projXYZ(0, 0, 0);
+  const rr = cam.F / Math.sqrt(Math.max(1.05, cam.D * cam.D - 1)) * (Math.hypot(surf.pos[0], surf.pos[1], surf.pos[2]) || 1);
+  const g = ctx.createRadialGradient(o.x, o.y, rr * 0.9, o.x, o.y, rr * 1.16);
+  g.addColorStop(0, 'rgba(110,170,255,0)');
+  g.addColorStop(0.35, 'rgba(110,170,255,0.32)');
+  g.addColorStop(1, 'rgba(110,170,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(o.x, o.y, rr * 1.16, 0, Math.PI * 2); ctx.fill();
 }
 
 /* ---------------- 塗りの模様 ----------------
@@ -2443,7 +2493,7 @@ function initLevel(lv) {
   grid = new Uint8Array(surf.N);
   colA = new Uint8Array(surf.N);
   col2A = new Uint8Array(surf.N); mixA = new Uint8Array(surf.N);
-  mixSlot.clear(); mixSlotKeys.length = 0; earthRot = null;
+  mixSlot.clear(); mixSlotKeys.length = 0; earthRot = null; earthFound = new Set();
   claimAt = new Float32Array(surf.N).fill(-1e9);
   ringA = new Uint8Array(surf.N);
   waveUntil = 0; rings = [];
@@ -2777,6 +2827,13 @@ function closeTrail() {
   // 模様: 塗ったときの状況(時間・面積・アイテム・コンボ)で決まる
   const pat = pickPattern({ drawTime: blinkT - (player.drawT || blinkT), pct: gained / initOpen * 100 });
   lastPat = pat;
+  for (const i of discoverContinents(newCells)) {
+    const P0 = surf.screenOf(player.c);
+    floats.push({ x: W / 2, y: FIELD_Y + 110, txt: CONTINENTS[i] + (i === 6 ? '大陸' : '') + 'を発見!', t: 2.4, col: '#9fe3ff', big: true });
+    say(CONTINENTS[i] + 'だ!', 1.6, true);
+    Snd.bell(880, 0.08, 0.3); Snd.bell(1320, 0.06, 0.45);
+    spawnParticles(P0.x, P0.y, 20, '#9fe3ff');
+  }
   if (!inkRainbow() && !earthMode()) {
     applyPattern(newCells, pat);
     if (pat !== 'grad' && newCells.length > 30) {
@@ -4112,6 +4169,7 @@ function startClear(split) {
   if (!split) Snd.clear_(root);
   sealRemaining();
   setState('clear');
+  artSaved = false;
   sayLine('clear', 2.5, true);
 }
 
@@ -4129,6 +4187,75 @@ function continueGame() {
   Snd.ready();
 }
 function giveUp() { if (canContinue()) { stTimer = CONFIG.CONTINUE_TIME; Snd.blip(); } }
+
+/* ---- ギャラリー: クリアした盤面を「作品」として小さな絵で残す(最新24枚) ----
+   平面は焼き込んだフィールドを、立体はクリア後に引いた画面の真ん中を切り取って保存する。
+   タイトルの G キー / OPTIONS から見られる。Z で大きく表示、X でもどる */
+const GALLERY_MAX = 24;
+let gallery = store.get('qlaim.gallery', []);
+if (!Array.isArray(gallery)) gallery = [];
+let gallerySel = 0, galleryBig = false, galleryFrom = 'title', artSaved = false;
+const galImgs = new Map();
+function galImg(src) {
+  let im = galImgs.get(src);
+  if (!im && typeof Image !== 'undefined') { im = new Image(); im.src = src; galImgs.set(src, im); }
+  return im;
+}
+function captureArt() {
+  artSaved = true;
+  try {
+    const tw = 150, th = 150, c2 = document.createElement('canvas');
+    c2.width = tw; c2.height = th;
+    const x2 = c2.getContext('2d');
+    if (!x2 || !x2.drawImage) return false;
+    if (!surf.is3D) {                         // 平面: フィールドを縦横比そのまま縮める
+      const k = Math.min(tw / fieldC.width, th / fieldC.height), w2 = fieldC.width * k, h2 = fieldC.height * k;
+      x2.fillStyle = theme().field; x2.fillRect(0, 0, tw, th);
+      x2.drawImage(fieldC, (tw - w2) / 2, (th - h2) / 2, w2, h2);
+    } else {                                  // 立体: 画面の真ん中を正方形に切り取る
+      const sz = Math.min(W, H - FIELD_Y) * 0.8;
+      x2.drawImage(cv, cam.cx - sz / 2, cam.cy - sz / 2, sz, sz, 0, 0, tw, th);
+    }
+    const img = c2.toDataURL('image/jpeg', 0.82);
+    if (typeof img !== 'string' || img.indexOf('data:image') !== 0) return false;
+    gallery.unshift({ img, s: surf.key, p: Math.round(percent() * 10) / 10, d: todayStr(), sc: score });
+    gallery = gallery.slice(0, GALLERY_MAX);
+    store.set('qlaim.gallery', gallery);
+    return true;
+  } catch (e) { return false; }
+}
+function openGallery(from) { galleryFrom = from; gallerySel = 0; galleryBig = false; setState('gallery'); Snd.select(); }
+function drawGallery(t) {
+  panel(30, 70, W - 60, 716);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd76b'; ctx.font = "bold 22px 'Courier New', monospace";
+  ctx.fillText('ギャラリー  ' + gallery.length + ' / ' + GALLERY_MAX, W / 2, 106);
+  galRects = [];
+  if (!gallery.length) {
+    ctx.fillStyle = '#aab6dd'; ctx.font = "bold 15px 'Courier New', monospace";
+    ctx.fillText('エリアをクリアすると、ここに作品が残ります', W / 2, 380);
+  }
+  gallery.forEach((g, i) => {
+    const col = i % 4, row = (i / 4) | 0, x = 58 + col * 134, y = 128 + row * 104, sz = 92;
+    galRects.push({ x, y, w: sz + 30, h: sz + 8, idx: i });
+    if (i === gallerySel) { ctx.fillStyle = 'rgba(90,120,220,.3)'; ctx.fillRect(x - 5, y - 5, sz + 10, sz + 10); }
+    const im = galImg(g.img);
+    if (im && im.complete && im.naturalWidth) ctx.drawImage(im, x, y, sz, sz);
+    else { ctx.fillStyle = '#1b2340'; ctx.fillRect(x, y, sz, sz); }
+    ctx.textAlign = 'left'; ctx.fillStyle = '#cdd8ff'; ctx.font = "10px 'Courier New', monospace";
+    ctx.fillText((CONFIG.SURF[g.s] ? CONFIG.SURF[g.s].label : g.s) + ' ' + g.p + '%', x + sz + 3 - 92, y + sz + 12);
+  });
+  if (galleryBig && gallery[gallerySel]) {        // 大きく表示
+    const g = gallery[gallerySel], im = galImg(g.img), sz = 480, x = (W - sz) / 2, y = 150;
+    ctx.fillStyle = 'rgba(4,6,16,0.92)'; ctx.fillRect(40, 118, W - 80, 610);
+    if (im && im.complete && im.naturalWidth) ctx.drawImage(im, x, y, sz, sz);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff'; ctx.font = "bold 16px 'Courier New', monospace";
+    ctx.fillText((CONFIG.SURF[g.s] ? CONFIG.SURF[g.s].label : g.s) + '  ' + g.p + '%  SCORE ' + (g.sc | 0) + '  ' + (g.d || ''), W / 2, y + sz + 34);
+  }
+  ctx.textAlign = 'center'; ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
+  ctx.fillText(galleryBig ? '←→ となり / Z・X もどる' : '←→↑↓ えらぶ / Z 大きく / X もどる', W / 2, 772);
+}
+let galRects = [];
 
 /* ---- あそびかた(ヘルプ)。タイトルの H キー、ポーズメニューから ---- */
 let helpFrom = 'title';
@@ -4273,7 +4400,7 @@ function closeOptions() {
 
 function onAction() {
   if (state === 'title') startGame();
-  else if (state === 'clear' && stTimer > 0.8) nextLevel();
+  else if (state === 'clear' && stTimer > 0.8) { if (!artSaved) captureArt(); nextLevel(); }
   else if (state === 'ending' && stTimer > 3) finishEnding();
   else if (state === 'over'  && stTimer > 0.8) { if (canContinue()) continueGame(); else backToTitle(); }
 }
@@ -4321,6 +4448,7 @@ const OPT_ITEMS = [
   { k:'skin',  label:'Clawdの色' },
   { k:'ink',   label:'インク', vals:INK_OPTS, str:true },
   { k:'_dex',  label:'buddy図鑑' },
+  { k:'_gallery', label:'ギャラリー' },
   { k:'_achv', label:'実績を見る' },
   { k:'_stats', label:'あそんだ記録' },
   { k:'_back', label:'もどる' },
@@ -4332,6 +4460,7 @@ function adjustOpt(dir) {
   if (it.k === '_achv') { setState('achv'); Snd.select(); return; }
   if (it.k === '_stats') { setState('stats'); Snd.select(); return; }
   if (it.k === '_dex') { dexFrom = 'options'; setState('dex'); Snd.select(); return; }
+  if (it.k === '_gallery') { openGallery('options'); return; }
   if (it.k === 'skin') {   // 解除済みの色だけを順に
     const op = skinsOpen(), i = Math.max(0, op.findIndex(k => k.name === settings.skin));
     settings.skin = op[(i + dir + op.length) % op.length].name;
@@ -4812,12 +4941,12 @@ function render() {
 
   ctx.fillStyle = t.field;
   ctx.fillRect(-8, -8, W + 16, H + 16);
-  if (surf.is3D) render3D(t);
+  if (surf.is3D) { drawAtmosphere(); render3D(t); }
   else render2D(t);
   drawItems();
   drawSeekers();
   drawBuddies();
-  if (surf.is3D && !['title', 'options', 'achv', 'stats', 'help', 'ending', 'dex', 'dexcard'].includes(state)) drawBackView(t);
+  if (surf.is3D && !['title', 'options', 'achv', 'stats', 'help', 'ending', 'dex', 'dexcard', 'gallery'].includes(state)) drawBackView(t);
   if (state === 'play' || state === 'ready' || state === 'pause') drawStatus();
   if (tutorStep >= 0 && (state === 'play' || state === 'ready')) drawTutor(t);
 
@@ -5318,6 +5447,7 @@ function renderOverlay() {
   if (state === 'help') { drawHelp(t); return; }
   if (state === 'dex') { drawDex(t); return; }
   if (state === 'dexcard') { drawDexCard(t); return; }
+  if (state === 'gallery') { drawGallery(t); return; }
   const blinkOn = true;   // 文字は点滅させない(目にやさしく)
   ctx.textAlign = 'center';
 
@@ -5396,7 +5526,7 @@ function renderOverlay() {
     ctx.fillText('OPTIONS  [X / O]', W / 2, 639);
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "bold 11px 'Courier New', monospace";
-    ctx.fillText('H あそびかた / B buddy図鑑 / P ポーズ / M 消音 / C スクショ', W / 2, 666);
+    ctx.fillText('H あそびかた / B 図鑑 / G ギャラリー / P ポーズ / M 消音 / C スクショ', W / 2, 666);
 
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "bold 13px 'Courier New', monospace";
@@ -5445,7 +5575,7 @@ function renderOverlay() {
     ctx.font = "bold 24px 'Courier New', monospace";
     ctx.fillText('実績  ' + n + ' / ' + ACHV.length, W / 2, 132);
     ACHV.forEach((a, i) => {
-      const y = 158 + i * 27.5, got = !!achvGot[a.id];
+      const y = 156 + i * 26.5, got = !!achvGot[a.id];
       ctx.textAlign = 'left';
       ctx.fillStyle = got ? '#ffd76b' : '#3d4768';
       ctx.font = "bold 15px 'Courier New', monospace";
@@ -5468,7 +5598,7 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 198, dy = 29;
+    const y0 = 196, dy = 27.5;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
       optRects.push({ x: 76, y: y - 22, w: W - 152, h: 30, idx: i });
@@ -5487,7 +5617,7 @@ function renderOverlay() {
       ctx.fillText(it.label, 116, y);
 
       ctx.textAlign = 'right';
-      if (it.k === '_back' || it.k === '_achv' || it.k === '_stats' || it.k === '_dex') {
+      if (it.k === '_back' || it.k === '_achv' || it.k === '_stats' || it.k === '_dex' || it.k === '_gallery') {
         // 値なし
       } else if (it.min != null && it.max === 10) {
         // 音量バー
@@ -5603,6 +5733,15 @@ function renderOverlay() {
   }
 
   if (state === 'clear') {
+    // はじめの1.2秒は結果を出さず、塗り上がった作品を見せる。そのあと結果の板がふわっと出る
+    if (stTimer < 1.2) {
+      ctx.globalAlpha = Math.min(1, stTimer * 3);
+      ctx.fillStyle = '#ffffff'; ctx.font = "bold 22px 'Courier New', monospace"; ctx.textAlign = 'center';
+      ctx.fillText(earthMode() ? '地図ができた!' : 'できあがり!', W / 2, FIELD_Y + 70);
+      ctx.globalAlpha = 1;
+      return;
+    }
+    ctx.globalAlpha = Math.min(1, (stTimer - 1.2) * 3);
     panel(90, 300, W - 180, wasSplit ? 240 : 210);
     if (wasSplit) {
       ctx.fillStyle = t.accent;
@@ -5628,6 +5767,7 @@ function renderOverlay() {
       const nx = CONFIG.SURF[surfaceFor(level + 1)].label;
       ctx.fillText('Z / タップ で次のエリアへ (' + nx + ')', W / 2, wasSplit ? 508 : 478);
     }
+    ctx.globalAlpha = 1;
     return;
   }
 
@@ -5757,6 +5897,21 @@ function onKeyDown(e) {
   }
   if ((k === 'h' || k === 'H') && state === 'title') { openHelp(); e.preventDefault(); return; }
   if ((k === 'b' || k === 'B') && state === 'title') { dexFrom = 'title'; setState('dex'); Snd.select(); e.preventDefault(); return; }
+  if ((k === 'g' || k === 'G') && state === 'title') { openGallery('title'); e.preventDefault(); return; }
+  if (state === 'gallery') {
+    const d = KEYDIR[k], N = Math.max(1, gallery.length);
+    if (d === 'left') gallerySel = (gallerySel + N - 1) % N;
+    else if (d === 'right') gallerySel = (gallerySel + 1) % N;
+    else if (d === 'up' && !galleryBig) gallerySel = (gallerySel + N - 4) % N;
+    else if (d === 'down' && !galleryBig) gallerySel = (gallerySel + 4) % N;
+    else if ((k === 'z' || k === 'Z' || k === 'Enter' || k === ' ') && !galleryBig && gallery.length) { galleryBig = true; Snd.select(); }
+    else if (k === 'z' || k === 'Z' || k === 'Enter' || k === ' ' || k === 'x' || k === 'X' || k === 'Escape' || k === 'g' || k === 'G') {
+      if (galleryBig) galleryBig = false; else setState(galleryFrom);
+      Snd.select();
+    }
+    if (d) Snd.blip();
+    e.preventDefault(); return;
+  }
   if (state === 'dex') {
     const d = KEYDIR[k], N = BUDDY_ORDER.length;
     if (d === 'left') dexSel = (dexSel + N - 1) % N;
@@ -5952,6 +6107,7 @@ function stickSet(d) {
   if (stickCur) releaseDir(stickCur);
   stickCur = d;
   if (!d) return;
+  buzz(8, 0.2);                      // 向きが変わったら、ごく短くブルッ
   if (state === 'title' && (d === 'left' || d === 'right')) { cycleMode(d === 'left' ? -1 : 1); return; }
   // メニューでは矢印キーと同じように選べる
   if (['options', 'pause', 'dex', 'dexcard'].includes(state)) { onKeyDown({ key: STICK_KEY[d], repeat: false, preventDefault() {} }); return; }
@@ -6013,6 +6169,13 @@ cv.addEventListener('pointerdown', e => {
     Snd.select(); return;
   }
   if (state === 'dexcard') { setState('dex'); Snd.select(); return; }
+  if (state === 'gallery') {
+    const r = galRects.find(q => inRect(p, q));
+    if (galleryBig) galleryBig = false;
+    else if (r) { gallerySel = r.idx; galleryBig = true; }
+    else setState(galleryFrom);
+    Snd.select(); return;
+  }
   if (state === 'help') { closeHelp(); return; }
   if (state === 'options') {
     const row = optRects.find(r => inRect(p, r));

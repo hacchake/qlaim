@@ -141,10 +141,16 @@ node test/run-tests.js
 ## 球 = 地球の地図
 - SPHERE だけ `earthMode()`。塗ると `colFor` が地図の色(`EARTH_BASE + earthIdx(c)`)を返す。模様・虹・インク色は使わない
 - 地図は `EARTH_RLE`(Natural Earth 110m 陸地・湖、パブリックドメインを 180×90 に。種類 a..p + 長さの連長)。`EARTH_PAL` 16色(海の深さ5段・海氷・氷床・ツンドラ・森・草原・砂漠・山…)。地表の種類は緯度と地域の箱で決めた近似
+- 大陸: `continentOf(lat, lon)`(7大陸をおおまかな範囲で)。囲んだ陸が3マス以上ではじめての大陸なら「○○を発見!」(`discoverContinents`)。見つけた記録は `qlaim.continents`、全部で実績 world。球のまわりの青い光は `drawAtmosphere`
 - `setupEarth` が HOME の中心を日本(北緯36・東経138)に回す回転 `earthRot` を作り、HOME も地図で塗る
 
 ## 線の色(となりの陣地の色がにじむ)
 - 平面 `lineHex` / 立体 `lineCi`(0.3秒ごとにキャッシュ作り直し)。陣地のあいだの線は両側の色を市松に縫い合わせ、空き地に面した線(歩ける道)はとなりの色を明るくした色
+
+## ギャラリー・クリアの見せ場
+- クリアから1秒後に `captureArt`(平面は fieldC、立体は画面の真ん中を 150×150 の JPEG に)。`qlaim.gallery` に最新24枚。state 'gallery'(タイトル G / OPTIONS)
+- クリアの最初の1.2秒は結果の板を出さず「できあがり!」だけ(作品を見せる)。そのあと板がふわっと出る
+- スティックは向きが変わると `buzz(8)`
 
 ## Clawd のセリフ
 - `sayLine(場面)` が `CLAWD_LINES[場面]` から選ぶ(直前と同じものは避ける)。約4%で `RARE_LINES`(★つき・金ぶち)

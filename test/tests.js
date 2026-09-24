@@ -1032,7 +1032,7 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   level = 5; initLevel(5); setState('play'); claimed = Math.ceil(initOpen * 0.55); startClear(false);
   assert('BONUS AREAで50%以上で「ボーナスハンター」', !!achvGot.bonus50);
   setState('achv'); let err = null; try { render(); } catch (e) { err = e.stack; }
-  assert('実績一覧(22件)の描画', !err && ACHV.length === 22, err || ACHV.length);
+  assert('実績一覧(23件)の描画', !err && ACHV.length === 23, err || ACHV.length);
 }
 
 
@@ -1413,6 +1413,37 @@ for (const mode of ['SPHERE', 'CUBE', 'TORUS', 'KLEIN']) {
   setState('options'); optSel = 0; stickSet('down'); stickSet(null);
   assert('メニューではスティックで選べる', optSel === 1);
   setState('title');
+}
+
+
+// ---- 92) 地球の大陸・ギャラリー・クリアの見せ場 ----
+{
+  assert('大陸の判定', continentOf(36, 138) === 0 && continentOf(48, 2) === 1 && continentOf(0, 20) === 2 && continentOf(40, -100) === 3
+    && continentOf(-15, -60) === 4 && continentOf(-25, 135) === 5 && continentOf(-80, 0) === 6 && continentOf(72, -40) === 3 && continentOf(24, 45) === 0);
+  settings.mode = 'SPHERE'; startGame(); setState('play');
+  const land = [];
+  for (let c = 0; c < surf.N; c++) if (grid[c] === OPEN && earthIdx(c) >= 6) land.push(c);
+  const f = discoverContinents(land);
+  assert('陸を囲むと大陸を発見', f.length >= 5, f.map(i => CONTINENTS[i]).join());
+  assert('同じ大陸は2回知らせない', discoverContinents(land).length === 0);
+  let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('大気の光つきの描画が例外なし', !err, err);
+  // ギャラリー(シムでは画像が作れないので、入っている体で表示と操作を確かめる)
+  gallery = [{ img: 'data:image/jpeg;base64,AA', s: 'PLANE', p: 72.5, d: '2026-09-25', sc: 1234 }, { img: 'data:image/jpeg;base64,BB', s: 'SPHERE', p: 80, d: '2026-09-25', sc: 99 }];
+  backToTitle();
+  onKeyDown({ key: 'g', preventDefault() {} });
+  assert('タイトルでGを押すとギャラリー', state === 'gallery');
+  onKeyDown({ key: 'ArrowRight', preventDefault() {} }); onKeyDown({ key: 'z', preventDefault() {} });
+  err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('ギャラリーを選んで大きく表示', !err && gallerySel === 1 && galleryBig, err);
+  onKeyDown({ key: 'x', preventDefault() {} }); onKeyDown({ key: 'x', preventDefault() {} });
+  assert('Xで閉じてタイトルへ', state === 'title');
+  assert('captureArt は画像が作れない環境でも落ちない', captureArt() === false);
+  gallery = [];
+  // クリアの見せ場: はじめは結果の板を出さない
+  settings.mode = 'PLANE'; startGame(); setState('play'); startClear(false);
+  err = null; try { stTimer = 0.3; render(); stTimer = 1.5; render(); } catch (e) { err = e.stack; }
+  assert('クリアの見せ場の描画が例外なし', !err, err);
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
