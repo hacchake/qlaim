@@ -1399,5 +1399,21 @@ for (const mode of ['SPHERE', 'CUBE', 'TORUS', 'KLEIN']) {
   }
 }
 
+
+// ---- 91) アナログスティック ----
+{
+  const R = 88;
+  assert('スティック: 真ん中は止まる', stickDir(5, -8, null, R) === null);
+  assert('スティック: 上下左右', stickDir(0, -50, null, R) === 'up' && stickDir(0, 50, null, R) === 'down' && stickDir(-50, 5, null, R) === 'left' && stickDir(50, -5, null, R) === 'right');
+  assert('スティック: 斜めの境目ではいまの向きを保つ', stickDir(40, -44, 'right', R) === 'right' && stickDir(44, -40, 'up', R) === 'up');
+  settings.mode = 'PLANE'; startGame(); setState('play');
+  stickSet('left'); assert('スティックで方向キーが押される', currentDir() === 'left');
+  stickSet('up'); assert('向きを変えると前の向きは離される', currentDir() === 'up' && !held.left);
+  stickSet(null); assert('指を離すと止まる', currentDir() === null);
+  setState('options'); optSel = 0; stickSet('down'); stickSet(null);
+  assert('メニューではスティックで選べる', optSel === 1);
+  setState('title');
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

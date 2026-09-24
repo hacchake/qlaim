@@ -48,7 +48,16 @@
     #pad{ display:contents; }
     #dpad{ order:0; } #game{ order:1; } #acts{ order:2; flex-direction:column; }
   }
-  #dpad{ display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:5px; }
+  /* アナログスティック: 親指を置いてすべらせる方向に進む */
+  #dpad{ display:block; }
+  #stick{ position:relative; width:176px; height:176px; border-radius:50%;
+    border:1px solid #3a4a7a; background:radial-gradient(circle, rgba(40,52,100,.55) 0%, rgba(20,26,56,.55) 70%);
+    touch-action:none; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+  #stick .ar{ position:absolute; color:#56608a; font:bold 14px 'Courier New',monospace; pointer-events:none; }
+  #knob{ position:absolute; left:50%; top:50%; width:70px; height:70px; margin:-35px 0 0 -35px; border-radius:50%;
+    background:radial-gradient(circle at 40% 35%, rgba(150,175,255,.85), rgba(70,95,190,.8)); border:1px solid #9fb1ff;
+    pointer-events:none; }
+  #stick.on{ border-color:#6d7ba8; }
   .pb,.ab{
     border:1px solid #3a4a7a; border-radius:10px;
     background:rgba(30,40,80,.55); color:#cdd8ff;
@@ -69,9 +78,11 @@
   <canvas id="game" width="640" height="856"></canvas>
   <div id="pad">
     <div id="dpad">
-      <button class="pb ghost"></button><button class="pb" id="b-up">▲</button><button class="pb ghost"></button>
-      <button class="pb" id="b-left">◀</button><button class="pb ghost"></button><button class="pb" id="b-right">▶</button>
-      <button class="pb ghost"></button><button class="pb" id="b-down">▼</button><button class="pb ghost"></button>
+      <div id="stick">
+        <span class="ar" style="left:81px;top:6px">▲</span><span class="ar" style="left:81px;bottom:6px">▼</span>
+        <span class="ar" style="left:8px;top:79px">◀</span><span class="ar" style="right:8px;top:79px">▶</span>
+        <div id="knob"></div>
+      </div>
     </div>
     <div id="acts">
       <button class="ab" id="b-view">全体<br><small>みる</small></button>
@@ -5924,12 +5935,54 @@ function bindHold(id, down, up) {
   el.addEventListener('pointerleave', rel);
   el.addEventListener('contextmenu', e => e.preventDefault());
 }
-[['b-up','up'],['b-down','down'],['b-left','left'],['b-right','right']].forEach(([id, d]) => {
-  bindHold(id, () => {
-    if (state === 'title' && (d === 'left' || d === 'right')) { cycleMode(d === 'left' ? -1 : 1); return; }
-    pressDir(d);
-  }, () => releaseDir(d));
-});
+// アナログスティック: 中心からのずれの向きで上下左右を決める。
+// 真ん中あたり(半径の18%以内)は止まる。斜めのあたりで向きがぱたぱた変わらないよう、いまの向きを少しだけ優先する
+function stickDir(dx, dy, cur, R) {
+  if (Math.hypot(dx, dy) < R * 0.18) return null;
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  let horiz = ax > ay;
+  if (cur === 'left' || cur === 'right') horiz = ax * 1.3 > ay;
+  else if (cur === 'up' || cur === 'down') horiz = ax > ay * 1.3;
+  return horiz ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+}
+const STICK_KEY = { up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight' };
+let stickCur = null;
+function stickSet(d) {
+  if (d === stickCur) return;
+  if (stickCur) releaseDir(stickCur);
+  stickCur = d;
+  if (!d) return;
+  if (state === 'title' && (d === 'left' || d === 'right')) { cycleMode(d === 'left' ? -1 : 1); return; }
+  // メニューでは矢印キーと同じように選べる
+  if (['options', 'pause', 'dex', 'dexcard'].includes(state)) { onKeyDown({ key: STICK_KEY[d], repeat: false, preventDefault() {} }); return; }
+  pressDir(d);
+}
+(function bindStick() {
+  const st = document.getElementById('stick'), kn = document.getElementById('knob');
+  if (!st || !st.addEventListener) return;
+  let pid = null;
+  const move = e => {
+    const r = st.getBoundingClientRect(), R = r.width / 2 || 88;
+    const dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R), L = Math.hypot(dx, dy), mx = R * 0.6, k = L > mx ? mx / L : 1;
+    if (kn) kn.style.transform = 'translate(' + (dx * k) + 'px,' + (dy * k) + 'px)';
+    stickSet(stickDir(dx, dy, stickCur, R));
+  };
+  st.addEventListener('pointerdown', e => {
+    e.preventDefault(); Snd.ensure(); pid = e.pointerId;
+    try { st.setPointerCapture(pid); } catch (er) {}
+    st.classList.add('on'); move(e);
+  });
+  st.addEventListener('pointermove', e => { if (e.pointerId === pid) { e.preventDefault(); move(e); } });
+  const end = e => {
+    if (e.pointerId !== pid) return;
+    pid = null; st.classList.remove('on');
+    if (kn) kn.style.transform = '';
+    stickSet(null);
+  };
+  st.addEventListener('pointerup', end);
+  st.addEventListener('pointercancel', end);
+  st.addEventListener('contextmenu', e => e.preventDefault());
+})();
 bindHold('b-view', () => { held.slow = true; }, () => { held.slow = false; });
 bindHold('b-fast', () => {
   held.fast = true;
