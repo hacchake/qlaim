@@ -722,5 +722,22 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('BONUS AREAのREADY表示が例外なし', !err, err);
 }
 
+
+// ---- 50) Clawdの色 ----
+{
+  for (const k in achvGot) delete achvGot[k];
+  settings.skin = 'ORANGE';
+  setState('options'); optSel = OPT_ITEMS.findIndex(o => o.k === 'skin'); adjustOpt(1);
+  assert('実績なしではORANGEだけ', settings.skin === 'ORANGE' && skinsOpen().length === 1);
+  achvGot.first = 'x'; achvGot.klein = 'x';
+  adjustOpt(1);
+  assert('実績で色が増えて選べる', settings.skin === 'MINT' && clawdCol() === '#5fd6b0');
+  adjustOpt(1); assert('次はGHOST(未解除は飛ばす)', settings.skin === 'GHOST');
+  delete achvGot.klein;
+  assert('選べない色になったら元の色', clawdCol() === CLAWD_COL);
+  let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('OPTIONS描画が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

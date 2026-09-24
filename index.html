@@ -2432,6 +2432,7 @@ const OPT_ITEMS = [
   { k:'crt',   label:'CRT効果',  vals:['OFF','ON'], bool:true },
   { k:'glow',  label:'発光',     vals:['OFF','ON'], bool:true },
   { k:'shake', label:'画面揺れ', vals:['OFF','ON'], bool:true },
+  { k:'skin',  label:'Clawdの色' },
   { k:'_achv', label:'実績を見る' },
   { k:'_back', label:'もどる' },
 ];
@@ -2440,6 +2441,11 @@ function adjustOpt(dir) {
   const it = OPT_ITEMS[optSel];
   if (!it || it.k === '_back') return;
   if (it.k === '_achv') { setState('achv'); Snd.select(); return; }
+  if (it.k === 'skin') {   // 解除済みの色だけを順に
+    const op = skinsOpen(), i = Math.max(0, op.findIndex(k => k.name === settings.skin));
+    settings.skin = op[(i + dir + op.length) % op.length].name;
+    Snd.blip(); saveSettings(); return;
+  }
   if (it.bool) {
     settings[it.k] = !settings[it.k];
     if (it.k === 'crt') applyCrt();
@@ -2587,11 +2593,23 @@ function drawFuse(p) {
    線を引いている間は腕を振る。ときどきまばたき。o の中身:
    moving/walkF: 歩きアニメ, drawing: 腕振り, look: 目線(-1/0/1), blink, dead */
 const CLAWD_COL = '#d97757', CLAWD_EYE = '#1d1411';
+// Clawd の色。need の実績を解除すると選べる(OPTIONS「Clawdの色」)
+const CLAWD_SKINS = [
+  { name:'ORANGE', col:CLAWD_COL, need:null },
+  { name:'MINT',   col:'#5fd6b0', need:'first' },
+  { name:'SKY',    col:'#6fb6ff', need:'combo' },
+  { name:'PINK',   col:'#ff8fc8', need:'items' },
+  { name:'PURPLE', col:'#b58cff', need:'seeker' },
+  { name:'GHOST',  col:'#e8ecff', need:'klein' },
+  { name:'GOLD',   col:'#ffcc33', need:'all' },
+];
+function skinsOpen() { return CLAWD_SKINS.filter(k => !k.need || achvGot[k.need]); }
+function clawdCol() { const k = skinsOpen().find(k => k.name === settings.skin); return k ? k.col : CLAWD_COL; }
 function drawClawd(cx, cy, s, o) {
   o = o || {};
   const x0 = cx - 6.5 * s, y0 = cy - 4.5 * s - (o.moving && o.walkF ? s : 0);
   const px = (c, r, w, h) => ctx.fillRect(x0 + c * s, y0 + r * s, w * s, h * s);
-  ctx.fillStyle = o.col || CLAWD_COL;
+  ctx.fillStyle = o.col || clawdCol();
   px(2, 0, 9, 7);                                        // 体
   const wave = o.drawing ? (Math.floor(blinkT * 8) & 1) : 0;
   px(0, o.drawing ? 2 - wave : 3, 2, 2);                 // 左腕
@@ -3323,14 +3341,14 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 222, dy = 40;
+    const y0 = 214, dy = 38;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
-      optRects.push({ x: 76, y: y - 26, w: W - 152, h: 36, idx: i });
+      optRects.push({ x: 76, y: y - 25, w: W - 152, h: 34, idx: i });
       const sel = i === optSel;
       if (sel) {
         ctx.fillStyle = 'rgba(90,120,220,.18)';
-        ctx.fillRect(76, y - 26, W - 152, 36);
+        ctx.fillRect(76, y - 25, W - 152, 34);
         ctx.fillStyle = t.accent;
         ctx.font = "bold 17px 'Courier New', monospace";
         ctx.textAlign = 'left';
@@ -3358,6 +3376,8 @@ function renderOverlay() {
         let vs;
         if (it.bool) vs = settings[it.k] ? 'ON' : 'OFF';
         else if (it.vals) vs = it.str ? settings[it.k] : it.vals[settings[it.k] | 0];
+        else if (it.k === 'skin') vs = (skinsOpen().find(k => k.name === settings.skin) || CLAWD_SKINS[0]).name
+                                      + ' (' + skinsOpen().length + '/' + CLAWD_SKINS.length + ')';
         else vs = String(settings[it.k]);
         ctx.fillStyle = sel ? '#ffffff' : '#aab6dd';
         ctx.fillText('◀ ' + vs + ' ▶', W - 84, y);
@@ -3367,7 +3387,7 @@ function renderOverlay() {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "bold 13px 'Courier New', monospace";
-    ctx.fillText('↑↓ 選択 / ←→ 変更 / Z・ESC もどる', W / 2, 668);
+    ctx.fillText('↑↓ 選択 / ←→ 変更 / Z・ESC もどる', W / 2, 676);
     return;
   }
 
