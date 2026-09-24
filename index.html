@@ -234,7 +234,7 @@ const ITEMS = {
   shield: { label:'SHIELD', mark:'◆', col:'#8dff9e', w:3, txt:'1回だけミスを防ぐ' },
   star:   { label:'STAR',   mark:'★', col:'#ffd76b', w:3, txt:'得点2倍' },
   life:   { label:'1UP',    mark:'♥', col:'#ff9ee8', w:1, txt:'残機+1' },
-  zap:    { label:'ZAP',    mark:'✦', col:'#ff7a4a', w:2, txt:'SPARXを一掃・SEEKERがしびれる' },
+  zap:    { label:'ZAP',    mark:'✦', col:'#ff7a4a', w:2, txt:'バチッコを一掃・オイカケがしびれる' },
 };
 function pickItemKind() {
   const ks = Object.keys(ITEMS), tot = ks.reduce((a, k) => a + ITEMS[k].w, 0);
@@ -299,7 +299,7 @@ function modeLabel(m) {
 function modeSub(m) {
   if (m === 'TOUR') return CONFIG.TOUR.length + '種類の盤面を順番に';
   if (m === 'DAILY') return dailyList().map(k => CONFIG.SURF[k].label).join(' → ');
-  if (m === 'ZEN') return 'ミスなし・敵は QIX だけ。音と色を楽しむモード';
+  if (m === 'ZEN') return 'ミスなし・敵はヌメリンだけ。音と色を楽しむモード';
   return CONFIG.SURF[m].sub;
 }
 
@@ -702,14 +702,14 @@ function entryNext() {
    達成すると画面上部に表示。OPTIONS の「実績を見る」で一覧 */
 const ACHV = [
   { id:'first',    name:'はじめの一歩',   txt:'どこかのエリアをクリア' },
-  { id:'split',    name:'一刀両断',       txt:'QIXを分断してクリア' },
+  { id:'split',    name:'一刀両断',       txt:'ヌメリンを分断してクリア' },
   { id:'nomiss',   name:'ノーミス',       txt:'1回もミスせずにエリアクリア' },
   { id:'speed',    name:'スピードスター', txt:'60秒以内にエリアクリア' },
   { id:'pct90',    name:'ほぼ全部',       txt:'占領率90%以上でクリア' },
   { id:'slowonly', name:'じっくり派',     txt:'Zを使わずにエリアクリア' },
   { id:'big30',    name:'大風呂敷',       txt:'一度に30%以上を囲む' },
   { id:'combo',    name:'れんぞく技',     txt:'コンボ倍率を最大(×3)にする' },
-  { id:'seeker',   name:'追っ手を撃退',   txt:'SEEKERを囲んで倒す' },
+  { id:'seeker',   name:'追っ手を撃退',   txt:'オイカケを囲んで倒す' },
   { id:'items',    name:'コレクター',     txt:'全種類のアイテムを取る' },
   { id:'area10',   name:'遠くまで来た',   txt:'AREA 10 に到達' },
   { id:'daily',    name:'今日の3面',      txt:'DAILYで3面クリア' },
@@ -2241,7 +2241,7 @@ function closeTrail() {
         spawnParticles(sp.x, sp.y, 42, theme().accent);
         qixes.splice(qixes.indexOf(q), 1);
       }
-      floats.push({ x: W / 2, y: H * 0.4, txt: 'QIX SPLIT!!', t: 2.0, col: theme().accent, big: true });
+      floats.push({ x: W / 2, y: H * 0.4, txt: 'ヌメリン まっぷたつ!!', t: 2.0, col: theme().accent, big: true });
       trail = [];
       player.drawing = false;
       fuseReset();
@@ -2365,7 +2365,7 @@ function crushSeekers() {
     score += CONFIG.SEEKER_BONUS;
     unlock('seeker');
     stats.seekers++;
-    floats.push({ x: p.x, y: p.y - 12, txt: 'SEEKER DOWN +' + CONFIG.SEEKER_BONUS, t: 1.6, col: '#ff5cf0', big: true });
+    floats.push({ x: p.x, y: p.y - 12, txt: 'オイカケ撃退 +' + CONFIG.SEEKER_BONUS, t: 1.6, col: '#ff5cf0', big: true });
     say('つかまえた!', 1.4, true);
     spawnParticles(p.x, p.y, 36, '#ff5cf0');
     rings.push({ x: p.x, y: p.y, t: 0.2, col: '#ff5cf0' });
@@ -2426,7 +2426,7 @@ const BUDDIES = {
   turtle:   { name:'カメ',             role:'ally',   perk:'shield',txt:'迷子。助けるとSHIELD' },
   capybara: { name:'カピバラ',         role:'ally',   perk:'slow',  txt:'迷子。助けると敵がのんびり' },
   owl:      { name:'フクロウ',         role:'ally',   perk:'star',  txt:'迷子。助けると得点2倍' },
-  robot:    { name:'ロボ',             role:'ally',   perk:'zap',   txt:'迷子。助けるとSPARXを一掃' },
+  robot:    { name:'ロボ',             role:'ally',   perk:'zap',   txt:'迷子。助けるとバチッコを一掃' },
   blob:     { name:'ブロブ',           role:'ally',   perk:'bomb',  txt:'迷子。助けるとまわりをインクで塗る' },
   snail:    { name:'カタツムリ',       role:'eater',  txt:'線をはって陣地をかじる。さわると追い払える' },
   mushroom: { name:'キノコ',           role:'eater',  txt:'線に生えて陣地を溶かす。さわると抜ける' },
@@ -2709,7 +2709,7 @@ function rescue(b, q) {
   else if (B.perk === 'shield') { player.shield = true; msg = 'SHIELD'; }
   else if (B.perk === 'slow') { slowT = CONFIG.SLOW_TIME; msg = '敵がのんびり'; }
   else if (B.perk === 'star') { starT = CONFIG.STAR_TIME; msg = '得点2倍'; }
-  else if (B.perk === 'zap') { zapAll(); msg = 'SPARX一掃'; }
+  else if (B.perk === 'zap') { zapAll(); msg = 'バチッコ一掃'; }
   else if (B.perk === 'bomb') { msg = 'インクボム +' + inkBomb(b.c, 5) + 'マス'; }
   checkExtend();
   floats.push({ x: q.x, y: q.y - 14, txt: B.name + 'をたすけた! ' + msg, t: 2.0, col: '#9dffea', big: true });
@@ -3143,7 +3143,7 @@ function updateSparxes(dt) {
   if (sparxTimer <= 0 && sparxes.length < CONFIG.SPARX_MAX) {
     spawnSparx(Math.random() < 0.5 ? 1 : -1);
     Snd.sparx();
-    floats.push({ x: W / 2, y: FIELD_Y + 20, txt: 'SPARX!', t: 1.0, col: '#ff7a4a' });
+    floats.push({ x: W / 2, y: FIELD_Y + 20, txt: 'バチッコ出現!', t: 1.0, col: '#ff7a4a' });
     sparxTimer = CONFIG.SPARX_INTERVAL * diff().interval;
   }
   const spd = CONFIG.SPARX_SPEED * diff().sparx * surf.def.sparx * enemySlow();
@@ -3291,9 +3291,9 @@ function drawHelp(t) {
     ctx.beginPath(); ctx.moveTo(x - 8, y + 6); ctx.quadraticCurveTo(x - 14, y + 12, x - 18, y + 10);
     ctx.moveTo(x + 8, y + 6); ctx.quadraticCurveTo(x + 14, y + 12, x + 18, y + 10); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x - 4, y - 1, 2.6, 0, Math.PI * 2); ctx.arc(x + 4, y - 1, 2.6, 0, Math.PI * 2); ctx.fill();
-  }, 'ヌメリン', '(QIX) 空き地をただようクラゲ。触手が描きかけの線に触れるとミス');
-  row(250, (x, y) => drawSparx(x, y, fake), 'バチッコ', '(SPARX) 線の上を走る火の玉。触れるとミス');
-  row(294, (x, y) => drawSeeker({ c: 0, ph: blinkT, stun: 0 }, false, { x, y: y + 4 }), 'オイカケ', '(SEEKER) AREA 4〜。線を追ってくる一つ目スライム。囲めば倒せる');
+  }, 'ヌメリン', '空き地をただようクラゲ。触手が描きかけの線に触れるとミス');
+  row(250, (x, y) => drawSparx(x, y, fake), 'バチッコ', '線の上を走る火の玉。触れるとミス');
+  row(294, (x, y) => drawSeeker({ c: 0, ph: blinkT, stun: 0 }, false, { x, y: y + 4 }), 'オイカケ', 'AREA 4〜。線を追ってくる一つ目スライム。囲めば倒せる');
   row(338, (x, y) => { ctx.fillStyle = '#ff9e3d'; ctx.fillRect(x - 2, y - 2, 5, 5); }, '導火線', '描く途中で止まると火がつき、線をさかのぼる');
   let y = 392;
   ctx.fillStyle = '#ffd76b'; ctx.font = "bold 14px 'Courier New', monospace";
@@ -3304,8 +3304,8 @@ function drawHelp(t) {
   }
   y += 50;
   ctx.fillStyle = '#cdd8ff'; ctx.font = "13px 'Courier New', monospace";
-  ['続けて囲むとコンボ。QIX 2体を線で分断すると即クリア',
-   'QIXが描きかけの線をかすめると「ギリギリ!」ボーナス',
+  ['続けて囲むとコンボ。ヌメリン2体を線で分断すると即クリア',
+   'ヌメリンが描きかけの線をかすめると「ギリギリ!」ボーナス',
    '5エリアごとに BONUS AREA。X を押す間は立体の全体が見える',
    'buddyたちも登場! 迷子は囲んで助けよう(タイトルで B = 図鑑)'].forEach((ln, i) => ctx.fillText(ln, W / 2, y + i * 22));
   ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
@@ -4477,7 +4477,7 @@ function renderOverlay() {
       '線で囲んで陣地を広げろ!  続けて囲むとコンボ',
       'アイテム S ◆ ★ ♥ ✦ は線で囲むと手に入る',
       '多面体・星型・クラインの壺の表面でも陣取り',
-      'AREA 3 からは QIX 2体 ── 分断で即クリア',
+      'AREA 3 からは ヌメリン2体 ── 分断で即クリア',
       'X を押す間は カメラが引いて全体が見える',
     ];
     lines.forEach((s, i) => ctx.fillText(s, W / 2, 296 + i * 24));
@@ -4539,8 +4539,8 @@ function renderOverlay() {
       ['囲んだ回数', stats.claims + ' 回'],
       ['囲んだマス', stats.cells.toLocaleString() + ' マス'],
       ['取ったアイテム', stats.items + ' 個'],
-      ['QIX分断', stats.splits + ' 回'],
-      ['倒したSEEKER', stats.seekers + ' 体'],
+      ['ヌメリン分断', stats.splits + ' 回'],
+      ['倒したオイカケ', stats.seekers + ' 体'],
       ['ニアミス', (stats.nearMiss || 0) + ' 回'],
       ['TOUR最高到達', 'AREA ' + ((stats.maxArea || {}).TOUR || '-')],
       ['クリアした盤面', Object.keys(CONFIG.SURF).filter(k => bestPct[k] != null).length + ' / ' + Object.keys(CONFIG.SURF).length],
@@ -4684,7 +4684,7 @@ function renderOverlay() {
       }
       if (bonusT > 0) {
         ctx.fillStyle = '#ff9ee8';
-        ctx.fillText('BONUS AREA ─ ' + CONFIG.BONUS_TIME + '秒で好きなだけ囲め! 敵はQIXだけ', W / 2, y);
+        ctx.fillText('BONUS AREA ─ ' + CONFIG.BONUS_TIME + '秒で好きなだけ囲め! 敵はヌメリンだけ', W / 2, y);
         y += 24;
       }
       if (buddies.length) {
@@ -4694,7 +4694,7 @@ function renderOverlay() {
       }
       if (seekers.length) {
         ctx.fillStyle = '#ff5cf0';
-        ctx.fillText('オイカケ(SEEKER)出現 ─ 線を追ってくる。囲めば倒せる', W / 2, y);
+        ctx.fillText('オイカケ出現 ─ 線を追ってくる。囲めば倒せる', W / 2, y);
       }
     }
     return;
@@ -4728,7 +4728,7 @@ function renderOverlay() {
     if (wasSplit) {
       ctx.fillStyle = t.accent;
       ctx.font = "bold 30px 'Courier New', monospace";
-      ctx.fillText('QIX SPLIT!!', W / 2, 348);
+      ctx.fillText('ヌメリン まっぷたつ!!', W / 2, 348);
       ctx.fillStyle = '#7bffa0';
       ctx.font = "bold 24px 'Courier New', monospace";
       ctx.fillText('AREA CLEAR!', W / 2, 384);
