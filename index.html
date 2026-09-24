@@ -4143,6 +4143,11 @@ function onKeyUp(e) {
 }
 window.addEventListener('keyup', onKeyUp);
 window.addEventListener('blur', () => { if (state === 'play' || state === 'ready') doPause(); });
+// スマホでアプリやタブを切り替えたときも自動でポーズ(音も止める)
+if (document.addEventListener) document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (state === 'play' || state === 'ready') doPause(); else Bgm.pause(); }
+  else if (state !== 'pause') Bgm.resume();
+});
 
 // 結果の共有: スマホは共有メニュー、PC はクリップボードへ
 const SHARE_URL = 'https://hacchake.github.io/qlaim/';
