@@ -600,5 +600,13 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('SEEKERの描画が例外なし', !err, err);
 }
 
+
+// ---- 41) 音の反応(AudioContext無しでも安全) ----
+{
+  let err = null;
+  try { Snd.react(900, 0.5); Snd.sweep(); setState('pause'); tickMeta(0.016); setState('play'); tickMeta(0.016); } catch (e) { err = e.stack; }
+  assert('BGMのこもり・効果音の左右がAC無しでも安全', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

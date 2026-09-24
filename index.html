@@ -600,6 +600,7 @@ for (let i = 0; i < 7; i++) NEBULA.push({ d: randDir(), r: rand(170, 330), h: ra
 const Snd = (() => {
   let ac = null, master = null, sfxG = null, bgmG = null;
   let hum = null, muted = false, hatBuf = null;
+  let bgmF = null, sfxP = null;   // BGMのこもり(ローパス) / 効果音の左右
 
   function ensure() {
     if (!ac) {
@@ -607,8 +608,13 @@ const Snd = (() => {
       if (!AC) return;
       ac = new AC();
       master = ac.createGain(); master.connect(ac.destination);
-      sfxG = ac.createGain(); sfxG.connect(master);
-      bgmG = ac.createGain(); bgmG.connect(master);
+      // 効果音 → 左右パン → マスター / BGM → ローパス(こもり) → マスター
+      sfxP = ac.createStereoPanner ? ac.createStereoPanner() : null;
+      if (sfxP) sfxP.connect(master);
+      sfxG = ac.createGain(); sfxG.connect(sfxP || master);
+      bgmF = ac.createBiquadFilter(); bgmF.type = 'lowpass'; bgmF.frequency.value = 18000; bgmF.Q.value = 0.8;
+      bgmF.connect(master);
+      bgmG = ac.createGain(); bgmG.connect(bgmF);
       // ハイハット用の短いノイズを1つだけ作って使い回す
       const n = Math.floor(ac.sampleRate * 0.06);
       hatBuf = ac.createBuffer(1, n, ac.sampleRate);
@@ -627,6 +633,22 @@ const Snd = (() => {
     bgmG.gain.value = (settings.bgm / 10) * 0.55;
   }
   function toggleMute() { muted = !muted; applyVols(); return muted; }
+  // 毎フレーム: 場面に合わせてBGMをこもらせる / 効果音を自機の位置へ振る
+  let cutNow = 18000;
+  function react(cut, pan) {
+    if (!ac) return;
+    if (Math.abs(cut - cutNow) > 1) { bgmF.frequency.setTargetAtTime(cut, ac.currentTime, cut > cutNow ? 0.08 : 0.25); cutNow = cut; }
+    if (sfxP) sfxP.pan.setTargetAtTime(clamp(pan, -1, 1), ac.currentTime, 0.05);
+  }
+  // 囲んだ瞬間: こもりを一気に開いてから戻す
+  function sweep() {
+    if (!ac) return;
+    const t = ac.currentTime;
+    bgmF.frequency.cancelScheduledValues(t);
+    bgmF.frequency.setValueAtTime(700, t);
+    bgmF.frequency.exponentialRampToValueAtTime(18000, t + 0.45);
+    cutNow = 18000;
+  }
 
   function bus(b) { return b === 'bgm' ? bgmG : sfxG; }
   // 汎用トーン。t0省略時は即時
@@ -743,7 +765,7 @@ const Snd = (() => {
 
   const SCALE = [0, 3, 5, 7, 10, 12, 15, 17]; // ペンタトニック風
   return {
-    ensure, applyVols, toggleMute, stopDraw, startDraw, updateDraw,
+    ensure, applyVols, toggleMute, stopDraw, startDraw, updateDraw, react, sweep,
     note, kick, hat, snare, blipDrum,
     get ac() { return ac; },
     claim(cells, slow) {
@@ -1861,6 +1883,7 @@ function closeTrail() {
       spawnParticles(p.x, p.y, 2, slow ? theme().trailS : theme().trailF);
     }
     Snd.claim(gained * (surf.is3D ? 4 : 1), slow);
+    Snd.sweep();
     rings.push({ x: sp.x, y: sp.y, t: 0, col: slow ? theme().trailS : theme().trailF });
   }
 
@@ -2333,6 +2356,12 @@ function update(dt) {
 // 状態遷移などフレーム毎の付随処理(ヘッドレステスト可能なよう分離)
 function tickMeta(dt) {
   if (shakeT > 0) shakeT -= dt;
+  // 音の反応: 導火線やポーズでBGMがこもる、ピンチ(残機0)でも少しこもる
+  const cut = state === 'pause' ? 500 : (fuse.lit && player.drawing) ? 1100 : deathTimer > 0 ? 700
+            : (state === 'play' && lives === 0) ? 6000 : 18000;
+  let pan = 0;
+  if (surf && grid) { const p = surf.screenOf(player.c); pan = (p.x - W / 2) / (W / 2) * 0.7; }
+  Snd.react(cut, pan);
   if (state === 'ready' && stTimer >= CONFIG.READY_TIME) setState('play');
   updateCamera(dt);
 }
