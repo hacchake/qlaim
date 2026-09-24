@@ -766,5 +766,21 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('描くとき光の粒がこぼれる', particles.length > np);
 }
 
+
+// ---- 53) あそんだ記録 ----
+{
+  const g0 = stats.games, c0 = stats.claims;
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 99; held.fast = false;
+  steps(0, -1, 3); steps(-1, 0, 3); steps(0, 1, 5);
+  for (let i = 0; i < 60; i++) update(1/60);
+  assert('記録: ゲーム回数・囲んだ回数・時間が増える', stats.games === g0 + 1 && stats.claims === c0 + 1 && stats.time > 0.9);
+  assert('記録: よく遊ぶ盤面', favSurface() != null);
+  setState('options'); optSel = OPT_ITEMS.findIndex(o => o.k === '_stats'); adjustOpt(1);
+  let err = null; try { render(); } catch (e) { err = e.stack; }
+  assert('記録画面へ・描画が例外なし', state === 'stats' && !err, err);
+  onKeyDown({ key: 'x', repeat: false, preventDefault() {} });
+  assert('記録画面から戻る', state === 'options');
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

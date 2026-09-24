@@ -642,6 +642,16 @@ function unlock(id) {
 }
 const hasAll = keys => keys.every(k => bestPct[k] != null);
 
+/* ---- あそんだ記録(統計)。OPTIONS「あそんだ記録」で表示 ---- */
+const stats = Object.assign({ games:0, time:0, claims:0, cells:0, items:0, splits:0, seekers:0, clears:0, plays:{} },
+                            store.get('qlaim.stats', {}));
+function saveStats() { store.set('qlaim.stats', stats); }
+function favSurface() {
+  let best = null;
+  for (const k in stats.plays) if (CONFIG.SURF[k] && (!best || stats.plays[k] > stats.plays[best])) best = k;
+  return best;
+}
+
 // 盤面ごとのクリア時の最高占領率(%)。クリアした盤面だけ入る
 const bestPct = store.get('qlaim.best', {});
 function saveBest() {
@@ -1717,6 +1727,7 @@ function initLevel(lv) {
   seekers = [];
   slowT = 0; starT = 0; combo = 0; comboT = 0; guarded = false; areaTime = 0;
   areaMiss = 0; areaFast = false;
+  if (state !== 'title') stats.plays[surf.key] = (stats.plays[surf.key] || 0) + 1;
   const s = surf.setup();
   homeCell = s.home;
   initOpen = 0;
@@ -1984,6 +1995,7 @@ function closeTrail() {
   collectItems();
   crushSeekers();
   tutorAdvance(3);
+  if (gained > 0) { stats.claims++; stats.cells += gained; }
   if (gained > 0) {
     // コンボ: 前に囲んでから COMBO_TIME 秒以内なら倍率アップ
     combo = comboT > 0 ? combo + 1 : 0;
@@ -2080,6 +2092,7 @@ function crushSeekers() {
     const p = surf.screenOf(k.c);
     score += CONFIG.SEEKER_BONUS;
     unlock('seeker');
+    stats.seekers++;
     floats.push({ x: p.x, y: p.y - 12, txt: 'SEEKER DOWN +' + CONFIG.SEEKER_BONUS, t: 1.6, col: '#ff5cf0', big: true });
     spawnParticles(p.x, p.y, 36, '#ff5cf0');
     rings.push({ x: p.x, y: p.y, t: 0.2, col: '#ff5cf0' });
@@ -2143,6 +2156,7 @@ function collectItems() {
     else if (it.k === 'star') starT = CONFIG.STAR_TIME;
     else if (it.k === 'life') lives++;
     itemsGot[it.k] = 1; store.set('qlaim.items', itemsGot);
+    stats.items++;
     if (Object.keys(ITEMS).every(k => itemsGot[k])) unlock('items');
     floats.push({ x: p.x, y: p.y - 14, txt: I.label + '!  ' + I.txt, t: 1.8, col: I.col, big: true });
     spawnParticles(p.x, p.y, 26, I.col);
@@ -2303,6 +2317,7 @@ function applyDeath() {
   if (lives < 0) {
     saveHi();
     entry.rank = -1;
+    saveStats();
     if (qualifies(score)) startEntry(); else setState('over');
     Bgm.stop();
     Snd.over();
@@ -2320,6 +2335,7 @@ function startGame() {
   level = 1;
   player.shield = false;
   hiScore = hiOf(modeKey());      // 日付が変わっていても今日の記録を使う
+  stats.games++; saveStats();
   continues = 0;
   tutorStep = settings.tutor ? -1 : 0; tutorT = 0;
   nextExtend = CONFIG.EXTEND_FIRST;
@@ -2340,6 +2356,8 @@ function startClear(split) {
   saveHi();
   saveBest();
   checkClearAchv(split);
+  stats.clears++; if (split) stats.splits++;
+  saveStats();
   Snd.stopDraw();
   Bgm.stop();
   if (!split) Snd.clear_();
@@ -2411,6 +2429,7 @@ function onAction() {
 
 function doPause() {
   if (state !== 'play' && state !== 'ready') return;
+  saveStats();
   pausedFrom = state;
   Snd.stopDraw();
   Bgm.pause();
@@ -2447,6 +2466,7 @@ const OPT_ITEMS = [
   { k:'shake', label:'画面揺れ', vals:['OFF','ON'], bool:true },
   { k:'skin',  label:'Clawdの色' },
   { k:'_achv', label:'実績を見る' },
+  { k:'_stats', label:'あそんだ記録' },
   { k:'_back', label:'もどる' },
 ];
 
@@ -2454,6 +2474,7 @@ function adjustOpt(dir) {
   const it = OPT_ITEMS[optSel];
   if (!it || it.k === '_back') return;
   if (it.k === '_achv') { setState('achv'); Snd.select(); return; }
+  if (it.k === '_stats') { setState('stats'); Snd.select(); return; }
   if (it.k === 'skin') {   // 解除済みの色だけを順に
     const op = skinsOpen(), i = Math.max(0, op.findIndex(k => k.name === settings.skin));
     settings.skin = op[(i + dir + op.length) % op.length].name;
@@ -2539,6 +2560,7 @@ function update(dt) {
   updateSeekers(dt);
   updateItems(dt);
   areaTime += dt;
+  stats.time += dt;
   if (tutorStep >= 0) { tutorT += dt; if (tutorStep === 3 && tutorT > 6) tutorAdvance(4); }
   // BONUS AREA: 時間切れでクリア(それまでの占領率でボーナス)
   if (bonusT > 0) { bonusT -= dt; if (bonusT <= 0) { bonusT = 0.001; cancelTrail(); startClear(false); bonusT = 0; return; } }
@@ -2819,7 +2841,7 @@ function render() {
   }
   drawItems();
   drawSeekers();
-  if (surf.is3D && state !== 'title' && state !== 'options' && state !== 'achv') drawBackView(t);
+  if (surf.is3D && !['title', 'options', 'achv', 'stats'].includes(state)) drawBackView(t);
   if (state === 'play' || state === 'ready' || state === 'pause') drawStatus();
   if (tutorStep >= 0 && (state === 'play' || state === 'ready')) drawTutor(t);
 
@@ -3324,6 +3346,38 @@ function renderOverlay() {
     return;
   }
 
+  if (state === 'stats') {
+    panel(70, 150, W - 140, 520);
+    ctx.fillStyle = '#9dffea';
+    ctx.font = "bold 24px 'Courier New', monospace";
+    ctx.fillText('あそんだ記録', W / 2, 196);
+    const hm = Math.floor(stats.time / 3600) + '時間' + String(Math.floor(stats.time / 60) % 60).padStart(2, '0') + '分';
+    const fav = favSurface();
+    const rows = [
+      ['ゲーム回数', stats.games + ' 回'],
+      ['あそんだ時間', hm],
+      ['エリアクリア', stats.clears + ' 回'],
+      ['囲んだ回数', stats.claims + ' 回'],
+      ['囲んだマス', stats.cells.toLocaleString() + ' マス'],
+      ['取ったアイテム', stats.items + ' 個'],
+      ['QIX分断', stats.splits + ' 回'],
+      ['倒したSEEKER', stats.seekers + ' 体'],
+      ['クリアした盤面', Object.keys(CONFIG.SURF).filter(k => bestPct[k] != null).length + ' / ' + Object.keys(CONFIG.SURF).length],
+      ['実績', ACHV.filter(a => achvGot[a.id]).length + ' / ' + ACHV.length],
+      ['よく遊ぶ盤面', fav ? CONFIG.SURF[fav].label + ' (' + stats.plays[fav] + '回)' : '─'],
+    ];
+    rows.forEach(([k, v], i) => {
+      const y = 244 + i * 34;
+      ctx.textAlign = 'left'; ctx.fillStyle = '#8fa3d9'; ctx.font = "bold 15px 'Courier New', monospace";
+      ctx.fillText(k, 110, y);
+      ctx.textAlign = 'right'; ctx.fillStyle = '#ffffff';
+      ctx.fillText(v, W - 110, y);
+    });
+    ctx.textAlign = 'center'; ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
+    ctx.fillText('Z / X / タップ でもどる', W / 2, 648);
+    return;
+  }
+
   if (state === 'achv') {
     panel(40, 90, W - 80, 690);
     const n = ACHV.filter(a => achvGot[a.id]).length;
@@ -3354,14 +3408,14 @@ function renderOverlay() {
     ctx.fillText('OPTIONS', W / 2, 182);
 
     optRects = [];
-    const y0 = 214, dy = 38;
+    const y0 = 206, dy = 36;
     OPT_ITEMS.forEach((it, i) => {
       const y = y0 + i * dy;
-      optRects.push({ x: 76, y: y - 25, w: W - 152, h: 34, idx: i });
+      optRects.push({ x: 76, y: y - 24, w: W - 152, h: 32, idx: i });
       const sel = i === optSel;
       if (sel) {
         ctx.fillStyle = 'rgba(90,120,220,.18)';
-        ctx.fillRect(76, y - 25, W - 152, 34);
+        ctx.fillRect(76, y - 24, W - 152, 32);
         ctx.fillStyle = t.accent;
         ctx.font = "bold 17px 'Courier New', monospace";
         ctx.textAlign = 'left';
@@ -3373,7 +3427,7 @@ function renderOverlay() {
       ctx.fillText(it.label, 116, y);
 
       ctx.textAlign = 'right';
-      if (it.k === '_back' || it.k === '_achv') {
+      if (it.k === '_back' || it.k === '_achv' || it.k === '_stats') {
         // 値なし
       } else if (it.min != null && it.max === 10) {
         // 音量バー
@@ -3605,8 +3659,8 @@ function onKeyDown(e) {
     e.preventDefault(); return;
   }
 
-  // 実績一覧: どのボタンでも OPTIONS へ戻る
-  if (state === 'achv') {
+  // 実績一覧・記録: どのボタンでも OPTIONS へ戻る
+  if (state === 'achv' || state === 'stats') {
     if (k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'Escape' || k === 'Enter' || k === ' ') { setState('options'); Snd.select(); }
     e.preventDefault(); return;
   }
@@ -3758,7 +3812,7 @@ cv.addEventListener('pointerdown', e => {
     else startGame();
     return;
   }
-  if (state === 'achv') { setState('options'); Snd.select(); return; }
+  if (state === 'achv' || state === 'stats') { setState('options'); Snd.select(); return; }
   if (state === 'options') {
     const row = optRects.find(r => inRect(p, r));
     if (!row) return;
