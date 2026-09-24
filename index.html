@@ -42,6 +42,12 @@
     user-select:none; -webkit-user-select:none;
   }
   @media (pointer:coarse){ #pad{ display:flex; } }
+  /* スマホ横向き: 十字キーを左、ボタンを右に分けて、ゲーム画面を大きく */
+  @media (pointer:coarse) and (orientation:landscape){
+    #wrap{ flex-direction:row; gap:14px; }
+    #pad{ display:contents; }
+    #dpad{ order:0; } #game{ order:1; } #acts{ order:2; flex-direction:column; }
+  }
   #dpad{ display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:5px; }
   .pb,.ab{
     border:1px solid #3a4a7a; border-radius:10px;
@@ -3930,10 +3936,20 @@ window.addEventListener('pointerup', endDrag);
 window.addEventListener('pointercancel', endDrag);
 
 /* ---------------- 画面サイズ調整 ---------------- */
+function isLandscapeTouch() {
+  try { return window.matchMedia('(pointer:coarse) and (orientation:landscape)').matches; } catch (e) { return false; }
+}
 function fitCanvas() {
   const pad = document.getElementById('pad');
-  const padH = (getComputedStyle(pad).display !== 'none') ? pad.offsetHeight + 8 : 0;
-  const s = Math.min((window.innerWidth - 8) / W, (window.innerHeight - padH - 12) / H);
+  let s;
+  if (isLandscapeTouch()) {
+    // 横向き: 左右のパッドの幅を引いた残りに収める
+    const dw = (document.getElementById('dpad').offsetWidth || 180) + (document.getElementById('acts').offsetWidth || 90) + 44;
+    s = Math.min((window.innerWidth - dw) / W, (window.innerHeight - 8) / H);
+  } else {
+    const padH = (getComputedStyle(pad).display !== 'none') ? pad.offsetHeight + 8 : 0;
+    s = Math.min((window.innerWidth - 8) / W, (window.innerHeight - padH - 12) / H);
+  }
   cv.style.width = Math.floor(W * s) + 'px';
   cv.style.height = Math.floor(H * s) + 'px';
 }
