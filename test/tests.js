@@ -870,5 +870,19 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('AREA5(BONUS)では突進しない', !(qixes[0].dash > 0) && qixes[0].dashCD == null);
 }
 
+
+// ---- 61) Clawd のひとこと・クリア音 ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  speech.t = 0; speech.cool = 0;
+  player.invuln = 0; death();
+  assert('ミスで「うわっ!」', speech.txt === 'うわっ!' && speech.t > 0);
+  for (let i = 0; i < 60; i++) updateParticles(1/30);
+  assert('吹き出しは時間で消える', speech.t <= 0);
+  assert('連発しない(クールダウン中は無視)', say('A') === true && say('B') === false && speech.txt === 'A');
+  let err = null; try { speech.t = 1; render(); Snd.clear_(0); Snd.clear_(110); } catch (e) { err = e.stack; }
+  assert('吹き出しの描画・クリア音が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
