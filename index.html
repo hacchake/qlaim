@@ -3015,7 +3015,7 @@ function drawItem(it, p, faint) {
 }
 function drawItems() {
   for (const it of items) {
-    if (surf.is3D && !visA[it.c]) continue;
+    if (surf.is3D && !visA[it.c]) { drawOffMarker(surf.screenOf(it.c), ITEMS[it.k].col, 5); continue; }   // 裏側は方向だけ
     drawItem(it, surf.screenOf(it.c), surf.is3D && surf.twoSided && !frontA[it.c]);
   }
 }
