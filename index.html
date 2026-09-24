@@ -1884,7 +1884,9 @@ function target()    { return surf.def.target; }
 const INK_COLORS = ['#ff8a1f', '#ff4fa3', '#3ec6ff', '#5fd34a', '#a66bff', '#ffd22e',
                     '#ff4a4a', '#22d6b4', '#4a6bff', '#e44bff', '#9a6a44'];
 const GOLD_INK = INK_COLORS.length;             // STAR 中は金のインク
-const INK_ALL = INK_COLORS.concat(['#ffcc33']);
+const INK_ALL = INK_COLORS.concat(['#ffcc33', '#ffffff']);
+const WHITE_INK = INK_COLORS.length + 1;
+const GOLD_NO = 10 + GOLD_INK, WHITE_NO = 10 + WHITE_INK;   // colA / col2A の番号(INK_BASE=10 から)
 const INK_BASE = 10, RB_BASE = INK_BASE + INK_ALL.length, RB_N = 12;
 const RB_COLORS = Array.from({ length: RB_N }, (_, i) => hslHex(i * 360 / RB_N, 88, 58));
 const INK_FIXED = { ORANGE:0, PINK:1, CYAN:2, LIME:3, PURPLE:4, YELLOW:5, RED:6, BLUE:8 };
@@ -1948,9 +1950,126 @@ function palHex(a) {
   return themePal[a - 1];
 }
 
+/* ---------------- 塗りの模様 ----------------
+   陣地を取った瞬間の状況で、そのかたまりに模様・グラデーションがつく。
+   セルごとに「2色目(col2A)」と「混ぜ具合(mixA 0..7)」を持ち、色 = palHex(colA) と palHex(col2A) を mixA/10 だけ混ぜた色。
+   優先順: 虹 > STAR(金の水玉) > コンボ(ストライプ/4以上はチェック) > SLOW中(波) > じっくり描いた(うずまき) > 大きく取った(波紋) > グラデーション */
+let col2A = new Uint8Array(0), mixA = new Uint8Array(0);
+let newCells = [];                       // 直前の塗りで塗ったセル(模様をつける対象)
+const PATTERNS = {
+  grad:   { name:'グラデーション' },
+  ripple: { name:'波紋',     why:'大きく取った' },
+  swirl:  { name:'うずまき', why:'じっくり描いた' },
+  wave:   { name:'なみなみ', why:'SLOW' },
+  stripe: { name:'ストライプ', why:'COMBO' },
+  check:  { name:'チェック', why:'COMBO×4' },
+  dots:   { name:'水玉',     why:'STAR' },
+};
+function pickPattern(info) {
+  if (starT > 0) return 'dots';
+  if (combo >= 3) return 'check';
+  if (combo >= 1) return 'stripe';
+  if (slowT > 0) return 'wave';
+  if (info.drawTime >= 4.5) return 'swirl';
+  if (info.pct >= CONFIG.BIG_CLAIM) return 'ripple';
+  return 'grad';
+}
+// となりの色相のインク(グラデーションの行き先)。colA の番号で返す
+function gradPartner(a) {
+  if (a < INK_BASE || a >= INK_BASE + INK_COLORS.length) return WHITE_NO;
+  const h = INK_COLORS[a - INK_BASE];
+  let best = 0, bd = 1e9;
+  INK_COLORS.forEach((c, i) => { const g = Math.abs(hueGap(c, h) - 70); if (i !== a - INK_BASE && g < bd) { bd = g; best = i; } });
+  return INK_BASE + best;
+}
+// cells に模様をつける。原点 = waveFrom、面の上の2軸(u, v)はセル単位
+function applyPattern(cells, pat) {
+  if (!cells.length || !mixA.length) return;
+  const P = surf.pos, o = waveFrom >= 0 ? waveFrom : cells[0], o3 = o * 3;
+  let U, V, unit = 1;
+  if (!surf.is3D) { U = [1, 0, 0]; V = [0, 1, 0]; }
+  else {
+    const N = [surf.nor[o3], surf.nor[o3 + 1], surf.nor[o3 + 2]];
+    const t = Math.abs(N[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    U = vnorm(vcross(t, N)); V = vcross(N, U);
+    const nb = surf.nb[o * 4] >= 0 ? surf.nb[o * 4] : surf.nb[o * 4 + 1];
+    if (nb >= 0) unit = Math.hypot(P[nb * 3] - P[o3], P[nb * 3 + 1] - P[o3 + 1], P[nb * 3 + 2] - P[o3 + 2]) || 1;
+  }
+  const uv = c => {
+    const dx = P[c * 3] - P[o3], dy = P[c * 3 + 1] - P[o3 + 1], dz = P[c * 3 + 2] - P[o3 + 2];
+    return [(dx * U[0] + dy * U[1] + dz * U[2]) / unit, (dx * V[0] + dy * V[1] + dz * V[2]) / unit];
+  };
+  let dmax = 1;
+  for (const c of cells) { const [u, v] = uv(c); dmax = Math.max(dmax, Math.hypot(u, v)); }
+  const sc = surf.is3D ? 0.6 : 1;          // 立体はセルが大きめなので模様も細かめに
+  const ang = rand(0, Math.PI);
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  for (const c of cells) {
+    const a = colA[c];
+    if (!a || a === HOME_COL || a >= RB_BASE) continue;       // 線・HOME・虹はそのまま
+    let [u, v] = uv(c);
+    const d = Math.hypot(u, v);
+    [u, v] = [(u * ca - v * sa) / sc, (u * sa + v * ca) / sc];
+    let m = 0, b = WHITE_NO;
+    if (pat === 'dots') {
+      b = GOLD_NO;
+      const fu = ((u % 7) + 7) % 7 - 3.5, fv = ((v % 7) + 7) % 7 - 3.5;
+      m = fu * fu + fv * fv < 5 ? 7 : 0;
+    } else if (pat === 'stripe') {
+      const w = Math.max(2, 5 - combo);
+      m = Math.floor((u + v) / w) & 1 ? 5 : 0;
+    } else if (pat === 'check') {
+      m = (Math.floor(u / 4) + Math.floor(v / 4)) & 1 ? 6 : 0;
+      b = gradPartner(a);
+    } else if (pat === 'wave') {
+      m = Math.floor((v + 2.2 * Math.sin(u / 3)) / 3.5) & 1 ? 5 : 0;
+    } else if (pat === 'swirl') {
+      const th = Math.atan2(v, u);
+      m = Math.floor(th * 2 / Math.PI + d / 3.5) & 1 ? 6 : 0;     // 4本腕のうずまき
+    } else if (pat === 'ripple') {
+      m = Math.floor(d / 4) & 1 ? 6 : Math.min(2, Math.floor(3 * d / dmax));
+      b = gradPartner(a);
+    } else {
+      m = Math.min(7, Math.floor(8 * d / dmax));
+      b = gradPartner(a);
+    }
+    col2A[c] = b; mixA[c] = m;
+  }
+}
+// 1つのセルの色(模様こみ)
+const mixCache = new Map();
+function cellHex(a, b, m) {
+  if (!m) return palHex(a);
+  const k = a + ':' + b + ':' + m + ':' + palHex(a);
+  let h = mixCache.get(k);
+  if (!h) { h = hexOf(mixRgb(rgbOf(palHex(a)), rgbOf(palHex(b)), m / 10)); if (mixCache.size > 4000) mixCache.clear(); mixCache.set(k, h); }
+  return h;
+}
+// 立体: 混ぜ色の枠(同じ組み合わせは同じ枠)。枠が足りなければ元の色で塗る
+const mixSlot = new Map(), mixSlotKeys = [];
+function mixCi(a, b, m, ring) {
+  const k = a * 65536 + b * 256 + m * 2 + ring;
+  let i = mixSlot.get(k);
+  if (i == null) {
+    if (mixSlotKeys.length >= MIX_SLOTS) return -1;
+    i = NCOL_BASE + mixSlotKeys.length;
+    mixSlot.set(k, i); mixSlotKeys.push(k);
+    fillMixCol(i, k);
+  }
+  return i;
+}
+function fillMixCol(i, k) {
+  const a = Math.floor(k / 65536), b = Math.floor(k / 256) & 255, m = (k >> 1) & 127, ring = k & 1;
+  let c = rgbOf(cellHex(a, b, m));
+  if (ring) c = mixRgb([0, 0, 0], c, 0.88);
+  for (let l = 0; l < LV; l++) col3D[i * LV + l] = rgbStr(c, 0.74 + 0.36 * l / (LV - 1));
+}
+
 /* ---------------- テーマ適用 ---------------- */
 const LV = 6;       // 立体面の陰影段階数
-const NCOL = 24 + 2 * (12 + 12);   // 立体面の色の種類(下の bases の数。インク17色+虹12色、その暗い版)
+const NCOL_BASE = 24 + 2 * (13 + 12);  // 立体面の固定の色(下の bases の数。インク11色+金+白+虹12色、その暗い版)
+const MIX_SLOTS = 120;                  // 模様・グラデーション用に、その場で作る混ぜ色の枠
+const NCOL = NCOL_BASE + MIX_SLOTS;
 const FLASH_CI = 23; // 塗りの波の光
 let animHue = 0, animAcc = 0, animRedraw = 0; // 動くテーマ用の経過時間
 function themePalette(t) {
@@ -1999,6 +2118,10 @@ function buildColors() {
     for (let l = 0; l < LV; l++)
       col3D.push(rgbStr(b, bright ? 0.66 + 0.38 * l / (LV - 1) : inkc ? 0.74 + 0.36 * l / (LV - 1) : 0.46 + 0.80 * l / (LV - 1)));
   });
+  for (let j = 0; j < MIX_SLOTS; j++) {
+    if (j < mixSlotKeys.length) fillMixCol(NCOL_BASE + j, mixSlotKeys[j]);
+    else for (let l = 0; l < LV; l++) col3D[(NCOL_BASE + j) * LV + l] = 'rgb(0,0,0)';
+  }
 }
 function applyCrt() {
   try { document.body.classList.toggle('crt', !!settings.crt); } catch (e) {}
@@ -2028,6 +2151,8 @@ function initLevel(lv) {
   surf = getSurface(surfaceFor(lv));
   grid = new Uint8Array(surf.N);
   colA = new Uint8Array(surf.N);
+  col2A = new Uint8Array(surf.N); mixA = new Uint8Array(surf.N);
+  mixSlot.clear(); mixSlotKeys.length = 0;
   claimAt = new Float32Array(surf.N).fill(-1e9);
   ringA = new Uint8Array(surf.N);
   waveUntil = 0; rings = [];
@@ -2102,7 +2227,7 @@ function redrawField() {
     const c = colA[i], cx = x * CS + CS / 2, cy = y * CS + CS / 2;
     if (!c || c === HOME_COL) add('line', cx, cy, CS * 0.62);
     else {
-      add((ringA[i] ? 'd' : 'n') + c, cx, cy, CS * 0.98);
+      add((ringA[i] ? 'd' : 'n') + c + (mixA[i] ? ':' + col2A[i] + ':' + mixA[i] : ''), cx, cy, CS * 0.98);
       // インクのムラ(濃いしみ・薄いしみ)と、つやの点
       const hsh = (i * 2654435761) >>> 0;
       if (hsh % 41 === 0) { dim.moveTo(cx + CS * 2.4, cy); dim.arc(cx, cy, CS * 2.4, 0, Math.PI * 2); }
@@ -2112,8 +2237,8 @@ function redrawField() {
   }
   for (const key in paths) {
     if (key === 'line') continue;
-    const c = +key.slice(1);
-    fctx.fillStyle = key[0] === 'd' ? shade(palHex(c), 0.9) : palHex(c);
+    const [c, b, m] = key.slice(1).split(':').map(Number), hx = cellHex(c, b || 0, m || 0);
+    fctx.fillStyle = key[0] === 'd' ? shade(hx, 0.9) : hx;
     fctx.fill(paths[key]);
   }
   // ムラは陣地の上だけに(陣地の形で切り抜く)
@@ -2190,7 +2315,7 @@ function claimFill(palNo) {
   const visited = visitedFrom(openNear(surf.qixCell(qixes[0])));
   let gained = 0;
   for (let i = 0; i < surf.N; i++) {
-    if (grid[i] === OPEN && !visited[i]) { grid[i] = WALL; colA[i] = colFor(i, palNo); markClaim(i); gained++; }
+    if (grid[i] === OPEN && !visited[i]) { grid[i] = WALL; colA[i] = colFor(i, palNo); mixA[i] = 0; newCells.push(i); markClaim(i); gained++; }
   }
   return gained;
 }
@@ -2276,6 +2401,7 @@ function playerStep(n) {
       // 描画開始
       player.drawing = true;
       player.usedFast = false;
+      player.drawT = blinkT;
       trailStart = player.c;
       trail = [];
       fuseReset();
@@ -2312,7 +2438,8 @@ function closeTrail() {
 
   // 軌跡を壁化(線のセルも空き地から奪った領域として計上する)
   waveFrom = player.c;
-  for (const c of trail) { grid[c] = WALL; colA[c] = 0; claimAt[c] = blinkT; }
+  for (const c of trail) { grid[c] = WALL; colA[c] = 0; mixA[c] = 0; claimAt[c] = blinkT; }
+  newCells = [];
 
   // ---- QIX分断チェック(2体時): 別領域に分かれたら即クリア ----
   if (qixes.length > 1) {
@@ -2321,7 +2448,7 @@ function closeTrail() {
     if (crushed.length) {
       let gained = trail.length;
       for (let i = 0; i < surf.N; i++) {
-        if (grid[i] === OPEN && !seen[i]) { grid[i] = WALL; colA[i] = colFor(i, palNo); markClaim(i); gained++; }
+        if (grid[i] === OPEN && !seen[i]) { grid[i] = WALL; colA[i] = colFor(i, palNo); mixA[i] = 0; markClaim(i); gained++; }
       }
       claimed += gained;
       score += gained * mul;
@@ -2349,6 +2476,16 @@ function closeTrail() {
 
   const gained = claimFill(palNo) + trail.length;
   claimed += gained;
+  // 模様: 塗ったときの状況(時間・面積・アイテム・コンボ)で決まる
+  const pat = pickPattern({ drawTime: blinkT - (player.drawT || blinkT), pct: gained / initOpen * 100 });
+  if (!inkRainbow()) {
+    applyPattern(newCells, pat);
+    if (pat !== 'grad' && newCells.length > 30) {
+      const P0 = surf.screenOf(player.c);
+      floats.push({ x: P0.x, y: P0.y - 40, txt: PATTERNS[pat].name + '!', t: 1.4, col: inkHex() });
+    }
+  }
+  newCells = [];
   nextInk();                     // 次の線は別の色
 
   collectItems();
@@ -2932,7 +3069,7 @@ function inkBomb(c0, r) {
   for (let d = 0; d <= r; d++) {
     const nx = [];
     for (const a of cur) {
-      if (grid[a] === OPEN && !qn.has(a)) { grid[a] = WALL; colA[a] = colFor(a, pal); markClaim(a); claimed++; n++; }
+      if (grid[a] === OPEN && !qn.has(a)) { grid[a] = WALL; colA[a] = colFor(a, pal); mixA[a] = 0; markClaim(a); claimed++; n++; }
       for (let k = 0; k < 4; k++) { const b = surf.nb[a * 4 + k]; if (b >= 0 && !seen.has(b) && grid[b] === OPEN) { seen.add(b); nx.push(b); } }
     }
     cur = nx;
@@ -4576,7 +4713,7 @@ function drawQixRibbons() {
 function drawInkTrail(t) {
   // 描いている線: 太いインクの帯(暗いふち + インク + つや)。光らせたり点滅させたりはしない
   if (!trail.length) return;
-  const col = trailHex(player.usedFast), w = surf.is3D ? 9 : CS * 2;
+  const col = trailHex(player.usedFast), w = surf.is3D ? 6.5 : CS * 1.35;
   const path = new Path2D();
   let pen = false, prev = null;
   for (const c of [trailStart].concat(trail, [player.c])) {
@@ -4588,7 +4725,7 @@ function drawInkTrail(t) {
   }
   ctx.save();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.strokeStyle = shade(col, 0.45); ctx.lineWidth = w + 3; ctx.stroke(path);
+  ctx.strokeStyle = shade(col, 0.45); ctx.lineWidth = w + 2; ctx.stroke(path);
   ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(path);
   ctx.translate(-w * 0.18, -w * 0.18);
   ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = w * 0.22; ctx.stroke(path);
@@ -4699,6 +4836,7 @@ function render3D(t) {
       else {
         const a = colA[c];
         ci = a === 0 ? 3 : a === HOME_COL ? 6 : a >= INK_BASE ? 24 + a - INK_BASE + (ringA[c] ? INK_ALL.length + RB_N : 0) : 6 + a + (ringA[c] ? 8 : 0);
+        if (mixA[c] && a && a !== HOME_COL) { const mi = mixCi(a, col2A[c], mixA[c], ringA[c]); if (mi >= 0) ci = mi; }
       }
     }
     let lit = nx * lx + ny * ly + nz * lz;

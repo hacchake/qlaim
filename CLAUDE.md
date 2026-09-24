@@ -135,6 +135,7 @@ node test/run-tests.js
 - colA の番号: 0 線 / 1..8 テーマの色 / 9 HOME / `INK_BASE`(10)〜 インク12色(最後が金) / `RB_BASE`〜 虹12帯。平面は `palHex`、立体は `col3D` の 24 番以降
 - `inkMode()` は INK テーマのとき。線を閉じるたびに `nextInk()`(直前3色は使わず、前の色と色相45°以上離す)。ローラー・描きかけの線・塗る色は必ず同じ色(`trailHex` = `inkHex`。速い線でも淡くしない。立体でも暗くしすぎない)
 - 虹: `inkNo()` が -1 を返し、`colFor` がセルごとに `rbBin`(帯の向きは毎回ランダム)で色を決める。RAINBOW アイテム(得点1.5倍)か設定 RAINBOW
+- 塗りの模様: `pickPattern`(STAR=水玉 > COMBO=ストライプ/3以上チェック > SLOW=波 > 4.5秒以上じっくり=うずまき > 大きく取った=波紋 > グラデーション)。`applyPattern` がセルごとに 2色目 `col2A` と混ぜ具合 `mixA`(0..7、混ぜ率 m/10)を入れる。色は `cellHex`。立体は `mixCi` が混ぜ色の枠(`MIX_SLOTS`)をその場で作る
 - `settings.ink`: MIX / RAINBOW / 固定色(`INK_FIXED`)。ネット対戦を作るなら、ここを各プレイヤーの色にする
 
 ## Clawd のセリフ

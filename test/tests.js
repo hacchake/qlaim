@@ -1290,5 +1290,41 @@ buddiesOn = true;
   fuseReset(); player.drawing = false; trail = [];
 }
 
+
+// ---- 87) 塗りの模様(時間・面積・アイテム・コンボ) ----
+{
+  const run = (setup) => {
+    settings.mode = 'PLANE'; settings.ink = 'MIX'; startGame(); setState('play');
+    qixes = qixes.slice(0, 1); qixes[0].x = GW * 0.8; qixes[0].y = GH * 0.8; sparxes = []; seekers = []; items = []; buddies = [];
+    setup();
+    held.fast = false; steps(0, -1, 14); steps(1, 0, 14); steps(0, 1, 14);
+    const ms = new Set(); let n = 0;
+    for (let c = 0; c < surf.N; c++) if (grid[c] === WALL && colA[c] >= INK_BASE) { n++; ms.add(mixA[c]); }
+    return { n, ms };
+  };
+  assert('pickPattern: STAR=水玉 / COMBO=ストライプ / SLOW=波 / じっくり=うずまき / 大きい=波紋',
+    (() => { starT = 1; const a = pickPattern({ drawTime: 0, pct: 1 }); starT = 0; combo = 1; const b = pickPattern({ drawTime: 0, pct: 1 }); combo = 3; const b2 = pickPattern({ drawTime: 0, pct: 1 }); combo = 0;
+             slowT = 1; const c = pickPattern({ drawTime: 0, pct: 1 }); slowT = 0;
+             return a === 'dots' && b === 'stripe' && b2 === 'check' && c === 'wave' && pickPattern({ drawTime: 6, pct: 1 }) === 'swirl'
+               && pickPattern({ drawTime: 0, pct: 30 }) === 'ripple' && pickPattern({ drawTime: 0, pct: 1 }) === 'grad'; })());
+  const g = run(() => {});
+  assert('ふつうに塗るとグラデーション(混ぜ具合が何段階もある)', g.n > 50 && g.ms.size >= 4, g.n + ' / ' + [...g.ms]);
+  const st = run(() => { starT = 10; });
+  let gold = 0; for (let c = 0; c < surf.N; c++) if (mixA[c] && palHex(col2A[c]) === '#ffcc33') gold++;
+  assert('STAR中は金の水玉', gold > 3, gold); starT = 0;
+  const sp = run(() => { combo = 2; comboT = 5; });
+  assert('コンボ中はストライプ(2段: 地と縞)', sp.ms.size === 2, [...sp.ms]); combo = 0;
+  // 描画(平面・立体)
+  let err = null;
+  try {
+    redrawField(); render();
+    settings.mode = 'CUBE'; startGame(); setState('play');
+    const cells = []; for (let c = 0; c < surf.N; c += 2) if (grid[c] === OPEN) { grid[c] = WALL; colA[c] = INK_BASE + 2; cells.push(c); }
+    waveFrom = cells[0]; applyPattern(cells, 'check'); applyPattern(cells.slice(0, 200), 'dots'); render();
+  } catch (e) { err = e.stack; }
+  assert('模様の描画(平面・立体)が例外なし', !err, err);
+  assert('立体の混ぜ色の枠が作られる', mixSlotKeys.length > 0 && mixSlotKeys.length <= MIX_SLOTS);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
