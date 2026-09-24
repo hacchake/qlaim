@@ -988,5 +988,15 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   assert('閉じるとポーズへ', state === 'pause');
 }
 
+
+// ---- 72) もう一度・DAILYの日付 ----
+{
+  settings.mode = 'DAILY'; startGame(); score = 10;
+  assert('DAILYの共有文に日付', /\d{4}\/\d{2}\/\d{2}/.test(resultText()), resultText());
+  setState('over'); stTimer = 1;
+  onKeyDown({ key: 'r', repeat: false, preventDefault() {} });
+  assert('Rですぐもう一度', state === 'ready' && level === 1 && score === 0);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
