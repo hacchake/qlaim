@@ -242,6 +242,32 @@ function pickItemKind() {
   return ks[0];
 }
 
+/* ---- 盤面の豆知識(READY 画面に出す) ---- */
+const SURF_INFO = {
+  PLANE:'すべての始まり。長方形のフィールド',
+  CUBE:'6つの正方形。サイコロの形',
+  SPHERE:'角も果てもない。どこまでも続く面',
+  TETRA:'4つの正三角形。いちばん面の少ない立体',
+  OCTA:'8つの正三角形。ピラミッドを2つ合わせた形',
+  DODECA:'12の正五角形。古代ギリシャでは宇宙の形とされた',
+  ICOSA:'20の正三角形。20面ダイスでおなじみ',
+  TRUNC_TETRA:'正四面体の角を切ると六角形が現れる',
+  TRUNC_CUBE:'立方体の角を切った形。正八角形と正三角形',
+  TRUNC_ICOSA:'正五角形12枚と正六角形20枚。サッカーボール',
+  CUBOCTA:'辺の真ん中どうしを結ぶと現れる。正方形6と正三角形8',
+  ICOSIDODECA:'正五角形12と正三角形20。正12面体と正20面体のあいだ',
+  RHOMBICUBOCTA:'正方形18と正三角形8。ふくらんだ立方体',
+  TRUNC_OCTA:'正八面体の角を切った形。すき間なく空間を埋められる',
+  TRUNC_DODECA:'正十角形12と正三角形20',
+  STELLA:'2つの正四面体が重なった星。ケプラーが名づけた',
+  SSD:'正12面体の面をのばすと生まれるトゲの星',
+  GSD:'20本の長いトゲ。星型正多面体でいちばんトゲトゲ',
+  TORUS:'穴のある曲面。ぐるっと1周の線を引いても2つに分かれない',
+  MOBIUS:'ねじれて表と裏がつながった帯。縁は1本だけ',
+  KNOT:'結び目の形をした管。切らずにほどくことはできない',
+  KLEIN:'裏も表もない閉じた曲面。4次元なら自分と交わらずに作れる',
+};
+
 /* ---- 遊ぶ盤面(タイトル画面で ←→ で選択) ---- */
 const MODES = ['TOUR', 'DAILY', 'ZEN'].concat(Object.keys(CONFIG.SURF));
 // ZEN: のんびりお絵かき。ミスなし・SPARX/SEEKERなし・導火線なし・記録なし。盤面はTOURの順
@@ -3759,13 +3785,15 @@ function renderOverlay() {
       ctx.fillStyle = '#8fa3d9';
       ctx.font = "bold 12px 'Courier New', monospace";
       ctx.fillText(surf.def.sub, W / 2, H / 2 + 12);
+      ctx.fillStyle = '#cdd8ff';
+      ctx.fillText(SURF_INFO[surf.key] || '', W / 2, H / 2 + 30);
       if (blinkOn) {
         ctx.fillStyle = '#ffffff';
         ctx.font = "bold 22px 'Courier New', monospace";
-        ctx.fillText('READY', W / 2, H / 2 + 42);
+        ctx.fillText('READY', W / 2, H / 2 + 60);
       }
       ctx.font = "bold 15px 'Courier New', monospace";
-      let y = H / 2 + 76;
+      let y = H / 2 + 94;
       if (surf.is3D) {
         ctx.fillStyle = '#8fa3d9';
         ctx.fillText('カメラが自機を追う ─ キーは画面の向き', W / 2, y);

@@ -968,5 +968,9 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   settings.skin = 'ORANGE';
 }
 
+
+// ---- 70) 盤面の豆知識 ----
+assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SURF_INFO[k]));
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
