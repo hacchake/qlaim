@@ -158,6 +158,7 @@ const CONFIG = {
   SPLIT_BONUS_LV: 2000, // 分断ボーナスのエリア加算
   BIG_CLAIM: 10,        // 一度にこの%以上囲むと BIG CLAIM ボーナス
   BIG_CLAIM_PTS: 120,   // BIG CLAIM ボーナス(1%あたり)
+  NEAR_MISS_PTS: 150,   // QIXが描きかけの線をかすめたときのボーナス
   READY_TIME: 1.4,      // AREA表示(READY)の時間(秒)
   CONTINUE_TIME: 10,    // ゲームオーバー後、コンティニューできる秒数
   BONUS_EVERY: 5,       // このエリアごとに BONUS AREA(5,10,15…)
@@ -2252,6 +2253,7 @@ function spawnItem() {
 function updateItems(dt) {
   if (slowT > 0) slowT -= dt;
   if (starT > 0) starT -= dt;
+  if (nearMissT > 0) nearMissT -= dt;
   if (comboT > 0) comboT -= dt;
   itemTimer -= dt;
   if (itemTimer <= 0) {
@@ -2343,10 +2345,26 @@ function updateQix(q, dt) {
   }
   // 当たり判定: 最新セグメント上をサンプリング
   if (!q.segs.length || state !== 'play') return;
-  surf.segEach(q.segs[q.segs.length - 1], c => {
+  let close = false;
+  const hit = surf.segEach(q.segs[q.segs.length - 1], c => {
     if (grid[c] === TRAIL || (player.drawing && c === player.c)) { death(); return true; }
+    // ニアミス: 描きかけの線のすぐ隣をかすめた
+    if (player.drawing && !close) for (let k = 0; k < 4; k++) { const n = surf.nb[c * 4 + k]; if (n >= 0 && grid[n] === TRAIL) { close = true; break; } }
     return false;
   });
+  if (!hit && close && nearMissT <= 0 && deathTimer <= 0) nearMiss();
+}
+// ニアミスボーナス(2秒に1回まで)
+let nearMissT = 0;
+function nearMiss() {
+  nearMissT = 2;
+  const pts = CONFIG.NEAR_MISS_PTS * surf.def.pts;
+  score += pts;
+  checkExtend();
+  const p = surf.screenOf(player.c);
+  floats.push({ x: p.x, y: p.y - 26, txt: 'ギリギリ! +' + pts, t: 1.2, col: '#ffe25c' });
+  say('ひやっ!', 1.0);
+  Snd.blip();
 }
 function updateQixes(dt) {
   for (const q of qixes) {

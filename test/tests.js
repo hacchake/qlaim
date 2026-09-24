@@ -1006,5 +1006,19 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
   settings.shake = true;
 }
 
+
+// ---- 74) ニアミス ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invuln = 0; held.fast = true;
+  steps(0, -1, 30);
+  const tc = trail[15], x = tc % GW, y = (tc / GW) | 0;
+  const q = qixes[0]; q.x = x + 2.5; q.y = y + 0.5; q.segs = [{ x1: x + 1.5, y1: y - 4, x2: x + 1.5, y2: y + 4, h: 0 }]; q.segT = 1; q.spd = 0;
+  const sc = score; nearMissT = 0;
+  updateQix(q, 0.001);
+  assert('線の隣をかすめるとニアミスボーナス', deathTimer <= 0 && score > sc && nearMissT > 0, score - sc);
+  const sc2 = score; updateQix(q, 0.001);
+  assert('連続では入らない', score === sc2);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
