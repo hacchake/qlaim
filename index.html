@@ -3102,6 +3102,7 @@ function drawStatus() {
     ctx.fillStyle = col; ctx.fillText(txt, x + 7, y + 13);
     x += w + 6;
   };
+  if (isZen()) pill('ZEN', '#9dffea');
   if (bonusT > 0) pill('BONUS ' + Math.ceil(bonusT) + 's', '#ff9ee8');
   if (slowT > 0) pill('S SLOW ' + Math.ceil(slowT), ITEMS.slow.col);
   if (starT > 0) pill('★ x2 ' + Math.ceil(starT), ITEMS.star.col);
