@@ -50,6 +50,24 @@ node test/run-tests.js
 - 記録: `bestPct`(盤面ごとのクリア時最高占領率, localStorage `qlaim.best`)。
 - 裏側ビュー `drawBackView`、効果表示 `drawStatus`、ポーズメニュー `PAUSE_ITEMS`、なぞり操作 `dirFromDrag`。
 
+## v4.1〜 追加分(どこを見ればいいか)
+- ゲームパッド: `padKeys` / `pollPad`(押した瞬間に `onKeyDown` を呼ぶ)。キー処理は `onKeyDown` / `onKeyUp` に関数化済み
+- 発光: `drawBloom`(縮小→拡大の加算合成)。`perf` / `watchPerf` が重いと自動で切る(設定は保存しない)
+- 盤面は23種。曲面は `PARAM_SHAPES`(`border` で縁あり=メビウスの帯、`flipOff` で反転のしかた)。三葉結び目は `trefoilTube`
+- ランキング: `ranks` / `addRank` / `qualifies`、名前入力は state 'entry'(`entry`)
+- DAILY: `dailyList`(日付のハッシュで3面)、記録キーは `modeKey()`('DAILY:YYYYMMDD')
+- チュートリアル: `TUTOR_TEXT` / `tutorAdvance`(settings.tutor で完了)
+- スクリーンショット: `saveShot`(Cキー)
+- SEEKER: `spawnSeeker` / `stepSeeker` / `updateSeekers` / `crushSeekers`(AREA 4〜)
+- 音の反応: `Snd.react`(BGMローパス・効果音パン)、`Snd.sweep`(囲んだ瞬間)、`Bgm.pulse()`(キックの脈動)
+- コンティニュー: `canContinue` / `continueGame` / `giveUp`
+- 実績: `ACHV` / `unlock` / `checkClearAchv`、一覧は state 'achv'
+- 年輪模様: `ringA`(占領時に閉じた場所からの距離の縞)
+- タイトルのデモ: `demoT` / `demoLv`(TOUR/DAILYで背景の盤面が巡る)
+- BONUS AREA: `isBonus` / `bonusT`(5エリアごと)、`cancelTrail`
+- 曲: synth / lofi を追加。`swing` で裏拍を遅らせる
+- テスト用スタブ(test/shim.js)に Path2D と measureText を追加済み
+
 ## 操作
 - 方向キーで空き地へ進むと、ボタン無しでゆっくり線を引く(×2点)。Z/スペースを押している間だけ速い(×1点)。
 - タッチは FAST ボタンのみ。
