@@ -637,7 +637,7 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   for (let i = 0; i < 3000 && achvToasts.length; i++) updateFloats(1/30);
   assert('お知らせは時間で消える', achvToasts.length === 0);
   assert('同じ実績は二度出ない', unlock('first') === false);
-  for (const k of Object.keys(ITEMS)) itemsGot[k] = 1;
+  for (const k of Object.keys(ITEMS)) itemsGot[k] = 1;   // (ZAP 追加後も全種)
   startGame(); stTimer = 2; tickMeta(0.016); items = [{ c: 0, k: 'star', t: 0 }]; grid[0] = WALL; collectItems();
   assert('アイテム4種で「コレクター」', !!achvGot.items);
   for (const k of ['TETRA', 'CUBE', 'OCTA', 'DODECA', 'ICOSA']) bestPct[k] = 80;
@@ -931,6 +931,18 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   claimed = Math.ceil(initOpen * 0.8); startClear(false);
   for (let i = 0; i < 120; i++) tickMeta(1/60);
   assert('クリア中はカメラが引く', cam.D > 4.3, cam.D.toFixed(2));
+}
+
+
+// ---- 67) ZAP ----
+{
+  settings.mode = 'PLANE'; startGame(); level = 4; initLevel(4); setState('play');
+  assert('準備: SPARXとSEEKERがいる', sparxes.length > 0 && seekers.length > 0);
+  items = [{ c: 0, k: 'zap', t: 0 }]; grid[0] = WALL; collectItems();
+  const c0 = seekers[0].c; updateSeekers(1);
+  assert('ZAPでSPARX一掃・SEEKERは止まる', sparxes.length === 0 && seekers[0].c === c0 && seekers[0].stun > 0);
+  for (let i = 0; i < 60 * 20; i++) updateSparxes(1/60);
+  assert('SPARXはしばらくするとまた出る', sparxes.length > 0);
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');

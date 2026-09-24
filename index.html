@@ -233,6 +233,7 @@ const ITEMS = {
   shield: { label:'SHIELD', mark:'◆', col:'#8dff9e', w:3, txt:'1回だけミスを防ぐ' },
   star:   { label:'STAR',   mark:'★', col:'#ffd76b', w:3, txt:'得点2倍' },
   life:   { label:'1UP',    mark:'♥', col:'#ff9ee8', w:1, txt:'残機+1' },
+  zap:    { label:'ZAP',    mark:'✦', col:'#ff7a4a', w:2, txt:'SPARXを一掃・SEEKERがしびれる' },
 };
 function pickItemKind() {
   const ks = Object.keys(ITEMS), tot = ks.reduce((a, k) => a + ITEMS[k].w, 0);
@@ -638,7 +639,7 @@ const ACHV = [
   { id:'big30',    name:'大風呂敷',       txt:'一度に30%以上を囲む' },
   { id:'combo',    name:'れんぞく技',     txt:'コンボ倍率を最大(×3)にする' },
   { id:'seeker',   name:'追っ手を撃退',   txt:'SEEKERを囲んで倒す' },
-  { id:'items',    name:'コレクター',     txt:'4種類のアイテムを全部取る' },
+  { id:'items',    name:'コレクター',     txt:'全種類のアイテムを取る' },
   { id:'area10',   name:'遠くまで来た',   txt:'AREA 10 に到達' },
   { id:'daily',    name:'今日の3面',      txt:'DAILYで3面クリア' },
   { id:'klein',    name:'裏も表もない',   txt:'クラインの壺をクリア' },
@@ -2131,7 +2132,9 @@ function stepSeeker(k) {
 function updateSeekers(dt) {
   const spd = CONFIG.SEEKER_SPEED * surf.def.speed * diff().qix * enemySlow();
   for (const k of seekers) {
-    k.acc += dt * spd; k.ph += dt;
+    k.ph += dt;
+    if (k.stun > 0) { k.stun -= dt; continue; }   // ZAP でしびれている
+    k.acc += dt * spd;
     while (k.acc >= 1) {
       k.acc -= 1;
       stepSeeker(k);
@@ -2156,6 +2159,7 @@ function crushSeekers() {
 }
 // 見た目: 脈打つ紫の玉に、自機のほうを見る目
 function drawSeeker(k, faint) {
+  if (k.stun > 0 && Math.floor(blinkT * 10) & 1) return;   // しびれ中は点滅
   const p = surf.screenOf(k.c), q = surf.screenOf(player.c), r = 7 + Math.sin(k.ph * 7) * 1.5;
   ctx.globalAlpha = faint ? 0.3 : 1;
   ctx.shadowColor = '#ff5cf0'; ctx.shadowBlur = 14;
@@ -2237,6 +2241,13 @@ function collectItems() {
     else if (it.k === 'shield') player.shield = true;
     else if (it.k === 'star') starT = CONFIG.STAR_TIME;
     else if (it.k === 'life') lives++;
+    else if (it.k === 'zap') {
+      for (const sp of sparxes) { const q = surf.screenOf(sp.c); spawnParticles(q.x, q.y, 20, '#ff7a4a'); }
+      sparxes = [];
+      sparxTimer = Math.min(sparxTimer, CONFIG.SPARX_INTERVAL * diff().interval * 0.5);  // しばらくしたらまた出る
+      for (const k of seekers) k.stun = 4;
+      shakeT = 0.25;
+    }
     itemsGot[it.k] = 1; store.set('qlaim.items', itemsGot);
     stats.items++;
     if (Object.keys(ITEMS).every(k => itemsGot[k])) unlock('items');
@@ -3525,7 +3536,7 @@ function renderOverlay() {
       '空き地へ進むと線を引く (ゆっくり ×2点)',
       'Z / SPACE を押す間だけ 速く引く (×1点)',
       '線で囲んで陣地を広げろ!  続けて囲むとコンボ',
-      'アイテム S ◆ ★ ♥ は線で囲むと手に入る',
+      'アイテム S ◆ ★ ♥ ✦ は線で囲むと手に入る',
       '多面体・星型・クラインの壺の表面でも陣取り',
       'AREA 3 からは QIX 2体 ── 分断で即クリア',
       'X を押す間は カメラが引いて全体が見える',
