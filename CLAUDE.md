@@ -15,6 +15,7 @@
 node test/run-tests.js
 ```
 - 全テスト合格を確認してから完了報告する。失敗したら直してから報告。
+- 大きく変えたときは `node test/fuzz.js`(ランダム操作で数万フレーム回す)も実行して problems 0 を確認する。
 - 新機能を足したら `test/tests.js` にテストも追加する。
 - テストはDOMを持たないNode上で動く(`test/shim.js` がcanvas等をスタブ化)。
   ブラウザAPIを新しく使う場合は shim.js にもスタブを足すこと。
