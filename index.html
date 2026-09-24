@@ -142,6 +142,7 @@ const CONFIG = {
   BIG_CLAIM: 10,        // 一度にこの%以上囲むと BIG CLAIM ボーナス
   BIG_CLAIM_PTS: 120,   // BIG CLAIM ボーナス(1%あたり)
   READY_TIME: 1.4,      // AREA表示(READY)の時間(秒)
+  CONTINUE_TIME: 10,    // ゲームオーバー後、コンティニューできる秒数
 
   /* -- SEEKER(追跡者) --------------------------------------------- */
   SEEKER_FROM: 4,       // このエリアから SEEKER が出る(8エリア目から2体)
@@ -1484,6 +1485,7 @@ let combo = 0, comboT = 0;      // コンボ数 / 次のコンボまでの残り
 let guarded = false;            // SHIELD でミスを防いだ最中
 let areaTime = 0;               // このエリアの経過時間
 let pauseSel = 0;               // ポーズメニューの選択行
+let continues = 0;              // このゲームでコンティニューした回数
 /* チュートリアル: 初めての1ゲームだけ、やることを順に教える
    0:歩く → 1:空き地へ出て線を引く → 2:線につないで囲む → 3:クリア条件(数秒で終わり)
    settings.tutor が true になったら二度と出ない */
@@ -2174,6 +2176,7 @@ function startGame() {
   level = 1;
   player.shield = false;
   hiScore = hiOf(modeKey());      // 日付が変わっていても今日の記録を使う
+  continues = 0;
   tutorStep = settings.tutor ? -1 : 0; tutorT = 0;
   nextExtend = CONFIG.EXTEND_FIRST;
   initLevel(1);
@@ -2197,6 +2200,19 @@ function startClear(split) {
   sealRemaining();
   setState('clear');
 }
+
+// コンティニュー: 同じエリアの最初から、残機を戻して続ける(スコアはそのまま)
+function canContinue() { return state === 'over' && stTimer < CONFIG.CONTINUE_TIME; }
+function continueGame() {
+  continues++;
+  lives = settings.lives;
+  player.shield = false;
+  initLevel(level);
+  setState('ready');
+  Bgm.play(bgmName());
+  Snd.ready();
+}
+function giveUp() { if (canContinue()) { stTimer = CONFIG.CONTINUE_TIME; Snd.blip(); } }
 
 function nextLevel() {
   level++;
@@ -2228,7 +2244,7 @@ function closeOptions() { saveSettings(); setState('title'); Snd.select(); Bgm.p
 function onAction() {
   if (state === 'title') startGame();
   else if (state === 'clear' && stTimer > 0.8) nextLevel();
-  else if (state === 'over'  && stTimer > 0.8) backToTitle();
+  else if (state === 'over'  && stTimer > 0.8) { if (canContinue()) continueGame(); else backToTitle(); }
 }
 
 function doPause() {
@@ -2972,7 +2988,7 @@ function renderHUD() {
   for (let i = 0; i < Math.min(lives, 6); i++) drawClawd(W - 62 - i * 16, 30, 1);
   ctx.fillStyle = '#6d7ba8';
   ctx.font = "bold 10px 'Courier New', monospace";
-  ctx.fillText(settings.diff, W - 52, 50);
+  ctx.fillText(settings.diff + (continues ? '  CONT×' + continues : ''), W - 52, 50);
 
   // ポーズボタン(タップ可)
   if (state === 'play' || state === 'ready' || state === 'pause') {
@@ -3280,7 +3296,15 @@ function renderOverlay() {
       ctx.font = "bold 16px 'Courier New', monospace";
       ctx.fillText(e ? (i + 1) + '. ' + e.n + '  ' + String(e.s).padStart(7, '0') + '  AREA ' + e.a : (i + 1) + '. ---', W / 2, y);
     }
-    if (stTimer > 0.8 && blinkOn) {
+    if (canContinue()) {
+      const left = Math.ceil(CONFIG.CONTINUE_TIME - stTimer);
+      ctx.fillStyle = '#ffd76b';
+      ctx.font = "bold 20px 'Courier New', monospace";
+      ctx.fillText('CONTINUE?  ' + left, W / 2, 548);
+      ctx.fillStyle = '#cdd8ff';
+      ctx.font = "bold 12px 'Courier New', monospace";
+      ctx.fillText('Z / タップ = AREA ' + level + ' から続ける   X = やめる', W / 2, 568);
+    } else if (stTimer > 0.8 && blinkOn) {
       ctx.fillStyle = '#cdd8ff';
       ctx.font = "bold 15px 'Courier New', monospace";
       ctx.fillText('Z / タップ でタイトルへ', W / 2, 555);
@@ -3376,8 +3400,9 @@ function onKeyDown(e) {
     if (state !== 'play' && state !== 'ready' && state !== 'pause') onAction();
     e.preventDefault(); return;
   }
-  if (k === 'x' || k === 'X' || k === 'Shift' || k === 'k') {
+  if (k === 'x' || k === 'X' || k === 'Shift' || k === 'k' || (k === 'Escape' && state === 'over')) {
     held.slow = true;
+    if (state === 'over') { giveUp(); e.preventDefault(); return; }
     if (state === 'title') openOptions();
     else if (state !== 'play' && state !== 'ready' && state !== 'pause') onAction();
     e.preventDefault(); return;

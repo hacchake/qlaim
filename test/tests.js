@@ -608,5 +608,23 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('BGMのこもり・効果音の左右がAC無しでも安全', !err, err);
 }
 
+
+// ---- 42) コンティニュー ----
+{
+  settings.mode = 'PLANE'; ranks.PLANE = [{ n: 'TOP', s: 99999999, a: 99 }, { n: 'TOP', s: 99999998, a: 99 }, { n: 'TOP', s: 99999997, a: 99 }, { n: 'TOP', s: 99999996, a: 99 }, { n: 'TOP', s: 99999995, a: 99 }];
+  startGame(); initLevel(5); level = 5; setState('play'); score = 1234;
+  lives = 0; player.invuln = 0; death(); for (let i = 0; i < 60 && deathTimer > 0; i++) update(1/30);
+  assert('ゲームオーバーでコンティニュー受付', state === 'over' && canContinue());
+  stTimer = 1; onAction();
+  assert('Zで同じエリアから続ける(残機回復・スコア維持)', state === 'ready' && level === 5 && lives === settings.lives && score === 1234 && continues === 1);
+  setState('play'); lives = 0; player.invuln = 0; death(); for (let i = 0; i < 60 && deathTimer > 0; i++) update(1/30);
+  stTimer = 1; giveUp();
+  assert('Xでやめるとカウントダウン終了', !canContinue());
+  onAction();
+  assert('その後Zでタイトルへ', state === 'title');
+  let err = null; try { setState('over'); stTimer = 2; render(); } catch (e) { err = e.stack; }
+  assert('コンティニュー表示が例外なし', !err, err);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
