@@ -2363,6 +2363,7 @@ let nearMissN = 0;              // このゲームのニアミス回数
 function nearMiss() {
   nearMissT = 2;
   if (++nearMissN >= 5) unlock('nearmiss');
+  stats.nearMiss = (stats.nearMiss || 0) + 1;
   const pts = CONFIG.NEAR_MISS_PTS * surf.def.pts;
   score += pts;
   checkExtend();
@@ -3743,7 +3744,7 @@ function renderOverlay() {
   }
 
   if (state === 'stats') {
-    panel(70, 150, W - 140, 520);
+    panel(70, 140, W - 140, 600);
     ctx.fillStyle = '#9dffea';
     ctx.font = "bold 24px 'Courier New', monospace";
     ctx.fillText('あそんだ記録', W / 2, 196);
@@ -3758,19 +3759,21 @@ function renderOverlay() {
       ['取ったアイテム', stats.items + ' 個'],
       ['QIX分断', stats.splits + ' 回'],
       ['倒したSEEKER', stats.seekers + ' 体'],
+      ['ニアミス', (stats.nearMiss || 0) + ' 回'],
+      ['TOUR最高到達', 'AREA ' + ((stats.maxArea || {}).TOUR || '-')],
       ['クリアした盤面', Object.keys(CONFIG.SURF).filter(k => bestPct[k] != null).length + ' / ' + Object.keys(CONFIG.SURF).length],
       ['実績', ACHV.filter(a => achvGot[a.id]).length + ' / ' + ACHV.length],
       ['よく遊ぶ盤面', fav ? CONFIG.SURF[fav].label + ' (' + stats.plays[fav] + '回)' : '─'],
     ];
     rows.forEach(([k, v], i) => {
-      const y = 244 + i * 34;
+      const y = 236 + i * 34;
       ctx.textAlign = 'left'; ctx.fillStyle = '#8fa3d9'; ctx.font = "bold 15px 'Courier New', monospace";
       ctx.fillText(k, 110, y);
       ctx.textAlign = 'right'; ctx.fillStyle = '#ffffff';
       ctx.fillText(v, W - 110, y);
     });
     ctx.textAlign = 'center'; ctx.fillStyle = '#6d7ba8'; ctx.font = "bold 12px 'Courier New', monospace";
-    ctx.fillText('Z / X / タップ でもどる', W / 2, 648);
+    ctx.fillText('Z / X / タップ でもどる', W / 2, 722);
     return;
   }
 
