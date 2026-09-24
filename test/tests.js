@@ -699,5 +699,9 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
     && CONFIG.SURF.MOBIUS.music === 'lofi' && BGMDATA.lofi.swing > 0);
 }
 
+
+// ---- 48) 音に合わせた脈動 ----
+assert('脈動はAC無しなら0', Bgm.pulse() === 0);
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);
