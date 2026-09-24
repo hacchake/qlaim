@@ -2418,8 +2418,14 @@ function cycleMode(dir) {
   Snd.blip();
 }
 
-function openOptions() { optSel = 0; setState('options'); Snd.select(); }
-function closeOptions() { saveSettings(); setState('title'); Snd.select(); Bgm.play('title'); }
+// OPTIONS はタイトルからもポーズからも開ける。閉じると開いた画面へ戻る
+let optsFrom = 'title';
+function openOptions() { optsFrom = state === 'pause' ? 'pause' : 'title'; optSel = 0; setState('options'); Snd.select(); }
+function closeOptions() {
+  saveSettings(); Snd.select();
+  if (optsFrom === 'pause') { setState('pause'); Bgm.play(bgmName()); Bgm.pause(); }  // 試聴で変わった曲を元に戻して止めておく
+  else { setState('title'); Bgm.play('title'); }
+}
 
 function onAction() {
   if (state === 'title') startGame();
@@ -2444,12 +2450,13 @@ function togglePause() {
   if (state === 'pause') doResume();
   else { doPause(); pauseSel = 0; }
 }
-const PAUSE_ITEMS = ['つづける', 'はじめから', 'タイトルへ'];
+const PAUSE_ITEMS = ['つづける', 'はじめから', 'OPTIONS', 'タイトルへ'];
 let pauseRects = [];
 function pauseChoose(i) {
   Snd.select();
   if (i === 0) doResume();
   else if (i === 1) startGame();
+  else if (i === 2) openOptions();
   else { Snd.stopDraw(); backToTitle(); }
 }
 
@@ -3530,7 +3537,7 @@ function renderOverlay() {
   }
 
   if (state === 'pause') {
-    panel(150, 300, W - 300, 250);
+    panel(150, 290, W - 300, 300);
     ctx.fillStyle = '#ffffff';
     ctx.font = "bold 26px 'Courier New', monospace";
     ctx.fillText('PAUSE', W / 2, 350);
@@ -3545,7 +3552,7 @@ function renderOverlay() {
     });
     ctx.fillStyle = '#6d7ba8';
     ctx.font = "12px 'Courier New', monospace";
-    ctx.fillText('↑↓ 選択 / Z 決定 / P 再開', W / 2, 530);
+    ctx.fillText('↑↓ 選択 / Z 決定 / P 再開', W / 2, 572);
     return;
   }
 
@@ -3662,7 +3669,8 @@ function loop(now) {
   if (state === 'play') update(dt);
   else {
     // タイトル/オプション/READYではQIXがアトラクト的に泳ぐ
-    if (state === 'title' || state === 'options' || state === 'ready') updateQixes(dt);
+    // (ポーズから開いたOPTIONSの間は止めたまま)
+    if (state === 'title' || (state === 'options' && optsFrom === 'title') || state === 'ready') updateQixes(dt);
     updateParticles(dt); updateFloats(dt);
   }
 

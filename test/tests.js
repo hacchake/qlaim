@@ -456,7 +456,7 @@ settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); player.invul
   assert('ポーズでメニュー', state === 'pause' && pauseSel === 0);
   pauseChoose(1);
   assert('「はじめから」でAREA1から', state === 'ready' && level === 1);
-  stTimer = 2; tickMeta(0.016); togglePause(); pauseChoose(2);
+  stTimer = 2; tickMeta(0.016); togglePause(); pauseChoose(3);
   assert('「タイトルへ」', state === 'title');
   assert('なぞりの向き', dirFromDrag(30, 5) === 'right' && dirFromDrag(-3, -40) === 'up' && dirFromDrag(-50, 10) === 'left' && dirFromDrag(2, 9) === 'down');
   let err = null;
@@ -780,6 +780,20 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('記録画面へ・描画が例外なし', state === 'stats' && !err, err);
   onKeyDown({ key: 'x', repeat: false, preventDefault() {} });
   assert('記録画面から戻る', state === 'options');
+}
+
+
+// ---- 54) ポーズからOPTIONS ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016);
+  togglePause(); pauseChoose(2);
+  assert('ポーズからOPTIONSを開ける', state === 'options');
+  optSel = OPT_ITEMS.findIndex(o => o.k === '_back'); closeOptions();
+  assert('閉じるとポーズへ戻る', state === 'pause');
+  pauseChoose(0);
+  assert('そのまま再開できる', state === 'play');
+  backToTitle(); openOptions(); closeOptions();
+  assert('タイトルから開いたらタイトルへ戻る', state === 'title');
 }
 
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
