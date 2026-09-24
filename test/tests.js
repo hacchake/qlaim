@@ -796,5 +796,14 @@ assert('脈動はAC無しなら0', Bgm.pulse() === 0);
   assert('タイトルから開いたらタイトルへ戻る', state === 'title');
 }
 
+
+// ---- 55) 名前入力で M / C も文字として入る ----
+{
+  settings.mode = 'OCTA'; ranks.OCTA = []; startGame(); score = 4321; startEntry();
+  const ev = key => ({ key, repeat: false, preventDefault() {} });
+  onKeyDown(ev('m')); onKeyDown(ev('c')); onKeyDown(ev('9'));
+  assert('名前入力でMとCが打てる', state === 'over' && rankOf('OCTA')[0].n === 'MC9', rankOf('OCTA')[0] && rankOf('OCTA')[0].n);
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

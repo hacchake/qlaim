@@ -3689,7 +3689,7 @@ function onKeyDown(e) {
   Snd.ensure();
 
   if ((k === 'c' || k === 'C') && state !== 'entry') { saveShot(); e.preventDefault(); return; }
-  if (k === 'm' || k === 'M') {
+  if ((k === 'm' || k === 'M') && state !== 'entry') {   // 名前入力中は文字として使う
     const m = Snd.toggleMute();
     floats.push({ x: W / 2, y: H / 2, txt: m ? 'MUTE' : 'SOUND ON', t: 1.0, col: '#cdd8ff' });
     e.preventDefault(); return;
