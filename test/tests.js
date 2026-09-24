@@ -1037,5 +1037,13 @@ assert('全盤面に豆知識がある', Object.keys(CONFIG.SURF).every(k => SUR
 // ---- 76) 曲名 ----
 assert('全曲に表示名がある', Object.keys(BGMDATA).every(k => SONG_LABEL[k]));
 
+
+// ---- 77) あそびかたから P でも戻れる ----
+{
+  settings.mode = 'PLANE'; startGame(); stTimer = 2; tickMeta(0.016); togglePause(); pauseChoose(3);
+  onKeyDown({ key: 'p', repeat: false, preventDefault() {} });
+  assert('あそびかたからPでポーズへ戻る', state === 'pause');
+}
+
 console.log(fails === 0 ? '\n=== 全テスト合格 ===' : '\n=== 失敗 ' + fails + ' 件 ===');
 process.exit(fails === 0 ? 0 : 1);

@@ -4077,7 +4077,7 @@ function onKeyDown(e) {
   }
 
   if (state === 'help') {
-    if (k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'Escape' || k === 'Enter' || k === ' ' || k === 'h' || k === 'H') closeHelp();
+    if (k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'Escape' || k === 'Enter' || k === ' ' || k === 'h' || k === 'H' || k === 'p' || k === 'P') closeHelp();
     e.preventDefault(); return;
   }
   if ((k === 'h' || k === 'H') && state === 'title') { openHelp(); e.preventDefault(); return; }
