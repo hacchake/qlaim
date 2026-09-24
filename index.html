@@ -926,6 +926,8 @@ const Snd = (() => {
       for (let i = 0; i < n; i++)
         tone(base * Math.pow(2, SCALE[i] / 12), 0, 0.1, 'square', 0.11, i * 0.055);
     },
+    // アイテム出現(ポロン)
+    itemPop() { tone(1046, 0, 0.07, 'triangle', 0.1); tone(1568, 0, 0.1, 'triangle', 0.09, 0.07); },
     // 心臓の鼓動(ドクン、ドクン)
     heart()  { tone(70, 45, 0.12, 'sine', 0.22); tone(64, 42, 0.12, 'sine', 0.16, 0.16); },
     item()   { [660,880,1320,1760].forEach((f,i)=>tone(f,f*1.02,0.08,'triangle',0.12,i*0.05)); },
@@ -2252,7 +2254,7 @@ function spawnItem() {
     if (grid[c] !== OPEN || items.some(it => it.c === c)) continue;
     if (qixes.some(q => surf.qixCell(q) === c)) continue;
     items.push({ c, k: pickItemKind(), t: 0 });
-    Snd.blip();
+    Snd.itemPop();
     return true;
   }
   return false;
